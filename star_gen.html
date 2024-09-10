@@ -79,6 +79,9 @@
 				display: table-cell;
 				visibility: visible;
 			}
+			.text-sm {
+				font-size: 0.9rem;
+			}
 		</style>
 	</head>
 	<body style="padding: 5px;">
@@ -101,8 +104,9 @@
 								<option value="1">Roll 1D: 1-5 = NS, 6 = BH</option>
 								<option value="2">Reroll Unusual Result</option>
 							</select>
-							Primary Star: Peculiar Type
+							Primary Star: Peculiar Type*
 						</label>
+						<span class="text-sm">* Only if Primary Star: Main-Sequence Only is NOT checked.</span>
 					</div>
 					<div class="input_container">
 						<label for="star_flat_sub"><input id="star_flat_sub" name="star_flat_sub" type="checkbox" /> Star Subtype: Flat Roll Method</label>
