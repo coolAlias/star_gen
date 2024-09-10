@@ -3846,7 +3846,7 @@ class StarSystemFactory extends AbstractFactory
 		const r_bodies = (system.n_planets - assigned_bodies);
 		if (r_bodies > 0) {
 			const last = system.star_groups.findLast(group => group.orbit_slots > 0);
-			system.star_groups[system.star_groups.length - 1].n_bodies += r_bodies;
+			last.n_bodies += r_bodies;
 			log('Assigned remaining ' + r_bodies + ' planetary bodies to furthest star or companion pair: ' + last.getDesignation(system.n_stellar));
 		}
 	}
