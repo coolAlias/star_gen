@@ -2019,8 +2019,8 @@ class World extends OrbitingBody
 		if (this.habitability > 0) desc.push('HR:' + this.habitability);
 		desc.push(this.getTypeName());
 		if (this.type === PLANET_ROCK || this.type === PLANET_MOON) {
-			desc.push(this.getTemperatureName() + ' (' + this.temperature + ')');
 			desc.push(this.getCompositionName());
+			desc.push(this.getTemperatureName() + ' (' + this.temperature + ')');
 			if (this.atmosphere?.type > 0) desc.push(this.atmosphere.getProfileLong());
 		}
 		return desc.join(', ');
