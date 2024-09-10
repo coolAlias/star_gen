@@ -2309,7 +2309,7 @@ class Atmosphere
 
 	getTaintProfile()
 	{
-		return this.taints.map(taint => taint.getProfileLong()).join(',');
+		return this.taints.map(taint => taint.getProfileLong()).join(', ');
 	}
 
 	getTypeName()
