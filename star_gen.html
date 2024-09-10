@@ -5091,7 +5091,7 @@ class AtmosphereFactory extends AbstractFactory
 		const roll = this.roll(2, 6, world.size + dm - 7, 'Atmosphere Type');
 		// Habitable zone atmospheres use the die result effectiely as is
 		if (world.isInHzco()) {
-			return new Atmosphere(Math.max(0, roll));
+			return new Atmosphere(clamp(roll, 0, 17));
 		}
 		// Non-habitable zone atmospheres have multiple charts
 		const orbit = world.getHzcoOrbit();
