@@ -20,7 +20,7 @@ The application can run in any modern browser (e.g. Firefox), no internet or loc
 
 **Star Type Distribution** Use "Traditional Traveller" for a more varied universe, or "Realistic" to include more Type M stars.
 
-**Primary Star: Main-Sequence Only** Uncheck this to allow Brown Dwarfs and other sucn **Unusual** results for the Primary Star.
+**Primary Star: Main-Sequence Only** Uncheck this to allow Brown Dwarfs and other **Unusual** or **Peculiar** results for the Primary Star.
 
 **Primary Star: Peculiar Type** Options for resolving particularly **Peculiar** Primary Star results.
 
