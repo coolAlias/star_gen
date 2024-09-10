@@ -1476,27 +1476,7 @@ class AbstractStar extends OrbitingBody
 	getHzcoPlus(mod, n = 3)
 	{
 		const hzco = this.getHzco(n);
-		// Mod > 0, i.e. increasing effective HZCO
-		if (mod > 0) {
-			if (hzco < 1) {
-				// The number of Orbit#s needed for HZCO to reach 1.0
-				const one_up = 10 * (1 - hzco);
-				return (mod < one_up
-					? hzco + (0.1 * mod)
-					: 1 + (mod - one_up));
-			}
-			return hzco + mod;
-		}
-		// Mod < 0, i.e. reducing effective HZCO
-		if (mod < 0) {
-			if (hzco + mod >= 1) {
-				return hzco + mod;
-			}
-			return (hzco > 1
-				? 1 + (0.1 * (hzco + mod - 1))
-				: hzco + (0.1 * mod));
-		}
-		return hzco;
+		return getOrbitPlus(hzco, mod);
 	}
 
 	isHzcoValid()
@@ -5615,6 +5595,37 @@ function orbitToAU(orbit)
 	const next = ORBIT_AU[n + 1];
 	const diff = next - base;
 	return base + (f * diff);
+}
+
+/**
+ * @param float orbit The original Orbit#
+ * @param float mod The number of Orbit#s to add to or subtract from the original Orbit#
+ *
+ * @return float the correctly modified Orbit#, accounting for "whole" increments of 0.1 when Orbit# < 1
+ */
+function getOrbitPlus(orbit, mod)
+{
+	// Mod > 0, i.e. increasing effective Orbit#
+	if (mod > 0) {
+		if (orbit < 1) {
+			// The number of Orbit#s needed for Orbit# to reach 1.0
+			const one_up = 10 * (1 - orbit);
+			return (mod < one_up
+				? orbit + (0.1 * mod)
+				: 1 + (mod - one_up));
+		}
+		return orbit + mod;
+	}
+	// Mod < 0, i.e. reducing effective Orbit#
+	if (mod < 0) {
+		if (orbit + mod >= 1) {
+			return orbit + mod;
+		}
+		return (orbit > 1
+			? 1 + (0.1 * (orbit + mod - 1))
+			: orbit + (0.1 * mod));
+	}
+	return orbit;
 }
 
 /**
