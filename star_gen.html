@@ -3867,12 +3867,14 @@ class StarSystemFactory extends AbstractFactory
 			const p_worlds = Math.ceil((p_group.n_bodies / 10) * this.roll(2, 6, -2, label + ' Baseline Number: invalid HZCO, rolling a random planet # to use as the baseline'));
 			return p_worlds + 1;
 		}
-		const primary = (secondary ? group : system.getPrimaryStar());
-		const dm = this.getBaselineNumberMod(system, primary, secondary);
-		return this.roll(2, 6, dm, label + ' Baseline Number: valid HZCO, rolling for baseline');
+		const primary = (secondary ? (group instanceof StarGroup ? group.bodies[0] : group) : system.getPrimaryStar());
+		const dm = this.getBaselineNumberMod(system, primary);
+		const n_planets = (this.per_star_baseline && secondary ? group.n_bodies : system.n_planets);
+		const dm_planet = this.getBaselineNumberWorldCountMod(n_planets);
+		return this.roll(2, 6, dm + dm_planet, label + ' Baseline Number: valid HZCO, rolling for baseline');
 	}
 
-	getBaselineNumberMod(system, primary, secondary = false)
+	getBaselineNumberMod(system, primary)
 	{
 		let dm = 0;
 		// DM-2 if Primary star has or is itself a companion
@@ -3889,8 +3891,7 @@ class StarSystemFactory extends AbstractFactory
 		if (primary.isPostStellar()) dm -= 2;
 		// DM-1 for each secondary star (excluding companions)
 		dm -= (system.stars.length - 1);
-		const n_planets = (this.per_star_baseline && secondary ? primary.n_bodies : system.n_planets);
-		return dm + this.getBaselineNumberWorldCountMod(n_planets);
+		return dm;
 	}
 
 	getBaselineNumberWorldCountMod(n_worlds)
