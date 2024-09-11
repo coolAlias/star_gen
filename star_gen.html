@@ -2451,10 +2451,11 @@ class StarFactory extends AbstractFactory
 	 * Complete the generation of a star with known type, subtype, and classification
 	 *
 	 * @param string entry Must be in the standard format TS C (i.e. Type Subtype Classification), e.g. M0 V
+	 * @param bool primary True if this is for the primary star
 	 *
 	 * @throws SyntaxError if unable to parse the entry
 	 */
-	fromProfile(entry)
+	fromProfile(entry, primary = false)
 	{
 		const number = (entry.length > 1 ? Number.parseInt(entry.substring(1, 2)) : NaN);
 		const subtype = (Number.isNaN(number) ? -1 : number);
@@ -2465,7 +2466,7 @@ class StarFactory extends AbstractFactory
 			throw new SyntaxError('Invalid Subtype for Type ' + type + ' star entry ' + entry);
 		}
 		const classification = this.parseClass(type, entry);
-		const star = new Star(type, subtype, classification);
+		const star = new Star(type, subtype, classification, primary);
 		log('Successfully generated star from profile: ' + star.getProfileShort());
 		this.genStarTraits(star);
 		return star;
@@ -3343,7 +3344,7 @@ class StarSystemFactory extends AbstractFactory
 		// Step 1: Determine Primary Star
 		let stars = [];
 		const primary = (profiles.length > 0
-			? this.star_factory.fromProfile(profiles[0])
+			? this.star_factory.fromProfile(profiles[0], true)
 			: this.star_factory.generate());
 		this.star_factory.flushHistory(primary);
 		stars.push(primary);
@@ -3655,7 +3656,7 @@ class StarSystemFactory extends AbstractFactory
 		const close_ok = !primary.isGiant();
 		const max_stars = Math.min(profiles.length, (close_ok ? 8 : 6));
 		for (let i = 1; i < max_stars; i++) {
-			const star = this.star_factory.fromProfile(profiles[i]);
+			const star = this.star_factory.fromProfile(profiles[i], false);
 			let flag = false;
 			while (!flag) {
 				let roll = this.roll(1, 6, 0, 'Existing Star Location: ' + star.getProfileShort());
