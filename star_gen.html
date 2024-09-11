@@ -2324,6 +2324,8 @@ class Atmosphere
 		case 5: return 'Dense';
 		case 6: return 'Very Dense';
 		case 7: return 'Extremely Dense';
+		case 8: return 'Crushing';
+		case 9: return 'Extremely Crushing';
 		}
 		return '';
 	}
@@ -2331,7 +2333,7 @@ class Atmosphere
 	getSubtypeProfile()
 	{
 		if (this.subtype < 0) return '';
-		return 'St' + this.subtype + (this.subtype_b > -1 ? '.' + this.subtype_b : '');
+		return 'St' + toHexCode(this.subtype) + (this.subtype_b > -1 ? '.' + toHexCode(this.subtype_b) : '');
 	}
 
 	getTaintProfile()
@@ -4827,6 +4829,17 @@ class WorldFactory extends AbstractFactory
 		const greenhouse = this.atmosphere_factory.isRunawayGreenhouse(system, world);
 		this.atmosphere_factory.flushHistory(this);
 		world.hydrographics = this.genHydrographicsCode(world, greenhouse);
+		// Special Case: Unusual atmospheres may have a minimum hydrographics score
+		if (world.atmosphere.type === 15) {
+			// Steam requires a minimum of 5
+			if (world.atmosphere.subtype === 8 || world.atmosphere.subtype_b === 8) {
+				world.hydrographics = Math.max(5, world.hydrographics);
+			}
+			// Panthalassic requires a score of 10
+			if (world.atmosphere.subtype === 7 || world.atmosphere.subtype_b === 7) {
+				world.hydrographics = 10;
+			}
+		}
 		world.hydrographics_percentage = this.genHydrographicsPercentage(world);
 		world.habitability = clamp(this.genHabitabilityRating(world), 0, 12);
 		world.albedo = this.genAlbedo(world);
@@ -5346,6 +5359,10 @@ class AtmosphereFactory extends AbstractFactory
 			atmosphere.subtype = this.genSubtypeHazardous(world, atmosphere, greenhouse);
 			atmosphere.irritant = atmosphere.irritant || ([2, 4, 7, 9, 11, 14].includes(atmosphere.subtype));
 		}
+		// Special Case: Unusual atmospheres roll for subtype, which may dictate density
+		if (atmosphere.type === 15) {
+			atmosphere.subtype = this.genSubtypeUnusual(world, atmosphere);
+		}
 	}
 
 	genSubtypeExotic(world, atmosphere, greenhouse = false)
@@ -5367,6 +5384,26 @@ class AtmosphereFactory extends AbstractFactory
 		// Corrosive and Insidious densities range from Very Thin (2) to Extremely Dense (7), increasing on each even result starting at 4
 		atmosphere.density = Math.max(2, 1 + Math.floor(Math.min(12, subtype) / 2));
 		return subtype;
+	}
+
+	genSubtypeUnusual(world, atmosphere, combo = false)
+	{
+		const roll = this.roll(1, 12, 0, 'Atmosphere Subtype: ' + atmosphere.getTypeName());
+		// Special Case: Layered subtype requires gravity > 1.2
+		if (roll === 6 && world.gravity <= 1.2) {
+			return this.genSubtypeUnusual(world, atmosphere, combo);
+		}
+		// Special Case: Dense results are incompatible with each other
+		if (roll < 4 && atmosphere.subtype_b > -1 && atmosphere.subtype_b < 4) {
+			return this.genSubtypeUnusual(world, atmosphere, combo);
+		}
+		// Special Case: Combination (i.e. 2 subtypes)
+		if (roll === 11) {
+			if (combo || atmosphere.subtype_b > -1) return this.genSubtypeUnusual(world, atmosphere, combo);
+			atmosphere.subtype_b = this.genSubtypeUnusual(world, atmosphere, true);
+			return this.genSubtypeUnusual(world, atmosphere, true);
+		}
+		return (roll > 10 ? 15 : roll);
 	}
 
 	getSubtypeMod(world, atmosphere, greenhouse = false)
@@ -5398,15 +5435,29 @@ class AtmosphereFactory extends AbstractFactory
 		if (atmosphere.type  <   6) return 3; // Thin
 		if (atmosphere.type  <   8) return 4; // Standard
 		if (atmosphere.type  <  10) return 5; // Dense
+		// Atmosphere types 10-12 (Exotic, Corrosive, and Insidious) should have already determined density
 		if (atmosphere.type === 13) return 6; // Very Dense
 		if (atmosphere.type === 14) return 2; // Very Thin
-		return 7; // Extremely Dense, typical of H and He Gas atmospheres
+		if (atmosphere.type === 16) return 8; // Crushing
+		if (atmosphere.type === 17) return 9; // Extremely Crushing
+		// Unusual atmosphere density depends on its subtype(s)
+		if (atmosphere.type === 15) {
+			if (atmosphere.subtype === 1 || atmosphere.subtype_b === 1) return 7;
+			if (atmosphere.subtype === 2 || atmosphere.subtype_b === 2) return 8;
+			if (atmosphere.subtype === 3 || atmosphere.subtype_b === 3) return 9;
+			if (atmosphere.subtype === 8 || atmosphere.subtype_b === 8) return 6 + this.roll(1, 3, -1, 'Steam Atmosphere Density');;
+			if (atmosphere.subtype === 7 || atmosphere.subtype_b === 7) return 4 + this.roll(1, 4, -1, 'Panthalassic Atmosphere Density');
+		}
+		return 4; // Default to Standard
 	}
 
 	genPressureTotal(atmosphere)
 	{
 		const max = this.getPressureMax(atmosphere.type, atmosphere.density);
-		const min = this.getPressureMin(atmosphere.type, atmosphere.density);
+		const low = this.getPressureMin(atmosphere.type, atmosphere.density);
+		// Special Case: Unusual (Panthalassic) atmosphere subtype requires a minimum of 1.0 bar
+		const pan = (atmosphere.type === 15 && (atmosphere.subtype === 7 || atmosphere.subtype_b === 7));
+		const min = (pan ? Math.max(1.0, low) : low);
 		const span = max - min;
 		if (span > 0) {
 			return min + (span * 0.01 * this.roll(1, 100, 0, 'Atmospheric Pressure: Total'));
@@ -5416,9 +5467,6 @@ class AtmosphereFactory extends AbstractFactory
 
 	getPressureMax(type, density)
 	{
-		// Special Case: H and He Gas atmospheres do not use the normal density ranges
-		if (type === 16) return 999;
-		if (type > 16) return 9999;
 		switch (density) {
 		case 0: return 0.0009;
 		case 1: return 0.09;
@@ -5427,7 +5475,9 @@ class AtmosphereFactory extends AbstractFactory
 		case 4: return 1.49;
 		case 5: return 2.49;
 		case 6: return 10.0;
-		case 7: return 9999;
+		case 7: return 100.0;
+		case 8: return 1000.0;
+		case 9: return 9999.9;
 		}
 		return 0;
 	}
@@ -5446,6 +5496,8 @@ class AtmosphereFactory extends AbstractFactory
 		case 5: return 1.5;
 		case 6: return 2.5;
 		case 7: return 10.0;
+		case 8: return 100.0;
+		case 9: return 1000.0;
 		}
 		return 0;
 	}
