@@ -5879,12 +5879,12 @@ function displayStarSystem(system, data)
 	s_body.replaceChildren();
 	p_body.replaceChildren();
 	system.star_groups.forEach(group => {
-		addStarTableRow(group, s_body, s_temp, output.n_stellar);
-		group.bodies.forEach(body => addPlanetTableRow(body, p_body, p_temp, output.n_stellar));
+		addStarTableRow(group, s_body, s_temp, system.n_stellar);
+		group.bodies.forEach(body => addPlanetTableRow(body, p_body, p_temp, system.n_stellar));
 	});
 	system.star_groups.forEach(group => {
 		group.bodies.forEach(body => {
-			body.bodies.forEach(moon => addPlanetTableRow(moon, p_body, p_temp, output.n_stellar, true));
+			body.bodies.forEach(moon => addPlanetTableRow(moon, p_body, p_temp, system.n_stellar, true));
 		});
 	});
 	const per_star = data.has('per_star_baseline');
@@ -5935,8 +5935,8 @@ function addPlanetTableRow(entry, body, template, n_stellar = 1, is_moon = false
 	const diameter = entry.getTotalDiameter();
 	const mass = entry.getTotalMass();
 	let j = 0;
-	row.children[j++].innerHTML = (is_moon ? entry.host.host.getDesignation(n_stellar) : entry.host.getDesignation(n_stellar));
-	row.children[j++].innerHTML = entry.getDesignation(n_stellar);
+	row.children[j++].innerHTML = entry.getHostStar().getDesignation(n_stellar);
+	row.children[j++].innerHTML = entry.getDesignation(0);
 	row.children[j++].innerHTML = (mass > 0 ? format(entry.getTotalMass(), 3) : '-');
 	row.children[j++].innerHTML = (diameter > 0 ? round(diameter, 3) + (entry.type === PLANET_GAS ? '&CirclePlus;' : 'km') : '-');
 	row.children[j++].innerHTML = (entry.density > 0 ? round(entry.density, 3) : '-');
@@ -6027,7 +6027,7 @@ window.addEventListener("load", function(event)
 			history.appendChild(document.createTextNode('Star System Rolls'));
 			history.appendChild(buildRollHistoryTable(output));
 			// Star generation history
-			output.stars.forEach(star => {
+			output.star_groups.forEach(star => {
 				if (star.history.length > 0) {
 					history.appendChild(document.createElement('hr'));
 					history.appendChild(document.createTextNode('Rolls for ' + (star.primary ? 'Primary ' : 'Secondary ') + star.getProfileLong()));
