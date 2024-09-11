@@ -34,17 +34,21 @@
 			}
 			button[type=submit] {
 				font-size: 1.1rem;
+				margin-top: 8px;
 				padding: 4px 8px 4px 8px;
 			}
 			.inline {
 				display: inline-block;
+			}
+			.block {
+				display: block;
 			}
 			.input_container {
 				max-width: max-content;
 				margin-bottom: 8px;
 			}
 			.container {
-				padding: 8px 0px 8px 0px;
+				margin: 8px 0px 8px 0px;
 				width: fit-content;
 			}
 			.footnote {
@@ -79,6 +83,12 @@
 				display: table-cell;
 				visibility: visible;
 			}
+			.text-bold {
+				font-weight: bold;
+			}
+			.text-red {
+				color: red;
+			}
 			.text-sm {
 				font-size: 0.9rem;
 			}
@@ -86,6 +96,19 @@
 	</head>
 	<body style="padding: 5px;">
 		<h1 class="small-caps">Star System Generator</h1>
+		<div class="container w-40">
+			<h2>Continuation Method</h2>
+			<hr>
+			<div id="options_continuation" class="hide">
+				<div class="input_container">
+					<label for="system_profile">Star Profile(s)</label>
+					<input id="system_profile" class="block" type="text" name="system_profile" />
+					<span class="text-sm">Standard 3-part star profiles only (e.g. M0 V or BD), separated by colons.</span>
+				</div>
+				<p id="error" class="text-bold text-red hide"></p>
+			</div>
+			<p class="show-options"><a href="#" onclick="return toggleShowOptions(event, this, 'options_continuation')">Show More</a></p>
+		</div>
 		<form id="form" style="padding-bottom: 5px;" method="get" action="#" accept-charset="utf-8">
 			<div class="container w-40">
 				<h2>Options</h2>
@@ -2425,14 +2448,60 @@ class StarFactory extends AbstractFactory
 	}
 
 	/**
+	 * Complete the generation of a star with known type, subtype, and classification
+	 *
+	 * @param string entry Must be in the standard format TS C (i.e. Type Subtype Classification), e.g. M0 V
+	 *
+	 * @throws SyntaxError if unable to parse the entry
+	 */
+	fromProfile(entry)
+	{
+		const number = (entry.length > 1 ? Number.parseInt(entry.substring(1, 2)) : NaN);
+		const subtype = (Number.isNaN(number) ? -1 : number);
+		const type = this.parseType(subtype < 0 ? entry : entry.substring(0, 1));
+		if (Number.isNaN(type)) {
+			throw new SyntaxError('Failed to parse Type for star entry ' + entry + '; subtype = ' + subtype);
+		} else if ((subtype < 0 && type <= MAIN_TYPE_M) || (subtype > -1 && type > MAIN_TYPE_M)) {
+			throw new SyntaxError('Invalid Subtype for Type ' + type + ' star entry ' + entry);
+		}
+		const classification = this.parseClass(type, entry);
+		const star = new Star(type, subtype, classification);
+		log('Successfully generated star from profile: ' + star.getProfileShort());
+		this.genStarTraits(star);
+		return star;
+	}
+
+	parseType(entry)
+	{
+		for (const k in STAR_TYPE) {
+			if (STAR_TYPE[k] === entry) return k;
+		}
+		return NaN;
+	}
+
+	parseClass(type, entry)
+	{
+		if (type > MAIN_TYPE_M) return -1;
+		// Special Case: Classes Ia and Ib
+		if (entry.endsWith('Ia')) return 0;
+		if (entry.endsWith('Ib')) return 1;
+		return convertFromRoman(entry.substring(3));
+	}
+
+	/**
 	 * @param Star|null primary Required when generating Secondary and/or Companion stars
 	 * @param string method Required with @primary; valid values are: Random, Lesser, Sibling, Twin, D, and BD
 	 */
 	generate(primary = null, method = '')
 	{
 		// Step 1: Type, Class, and Subtype
-		let star = this.genStar(primary, method);
-		
+		const star = this.genStar(primary, method);
+		this.genStarTraits(star, primary, method);
+		return star;
+	}
+
+	genStarTraits(star, primary = null, method = '')
+	{
 		// Step 2: Mass
 		star.mass = this.genMass(star);
 		star.mass_deviation = this.genMassDeviation(star);
@@ -2507,8 +2576,6 @@ class StarFactory extends AbstractFactory
 		star.luminosity = this.genLuminosity(star, primary);
 		star.luminosity_deviation = this.genLuminosityDeviation(star, primary);
 		star.hzco = calculateHabitableCenterZone(star.getTotalLuminosity());
-		
-		return star;
 	}
 
 	genStar(primary, method)
@@ -3267,17 +3334,24 @@ class StarSystemFactory extends AbstractFactory
 		this.bands = ['Primary', 'Close', 'Near', 'Far'];
 	}
 
-	generate()
+	/**
+	 * @param array profiles Optional profiles for existing stars when using the Continuation method
+	 */
+	generate(profiles = [])
 	{
 		//=== STAR GEN ===//
 		// Step 1: Determine Primary Star
 		let stars = [];
-		const primary = this.star_factory.generate();
+		const primary = (profiles.length > 0
+			? this.star_factory.fromProfile(profiles[0])
+			: this.star_factory.generate());
 		this.star_factory.flushHistory(primary);
 		stars.push(primary);
 		
 		// Step 2: Determine presence of Secondary and/or Companion Star(s)
-		let secondaries = this.checkForSecondaryObjects(primary);
+		let secondaries = (profiles.length > 0
+			? this.getSecondariesFromProfiles(primary, profiles)
+			: this.checkForSecondaryObjects(primary));
 		
 		// Step 3: Determine Orbit#(s) and Eccentricity
 		secondaries = this.genSecondaryOrbits(primary, secondaries);
@@ -3291,8 +3365,12 @@ class StarSystemFactory extends AbstractFactory
 			if (i === 0) {
 				star = primary;
 			} else if (entry['present']) {
-				method = this.genSecondaryStarMethod(primary, entry);
-				star = this.star_factory.generate(primary, method);
+				if (entry['present'] instanceof AbstractStar) {
+					star = entry['present'];
+				} else {
+					method = this.genSecondaryStarMethod(primary, entry);
+					star = this.star_factory.generate(primary, method);
+				}
 				this.assignSecondaryCharacteristics(star, entry);
 				star.designation = stars.length;
 				star.orbit_band = i;
@@ -3301,8 +3379,13 @@ class StarSystemFactory extends AbstractFactory
 			}
 			// Generate companion star, if any
 			if (star && entry['companion']) {
-				method = this.genSecondaryStarMethod(star, entry, true);
-				let companion = this.star_factory.generate(star, method);
+				let companion = null;
+				if (entry['companion'] instanceof AbstractStar) {
+					companion = entry['companion'];
+				} else {
+					method = this.genSecondaryStarMethod(star, entry, true);
+					companion = this.star_factory.generate(star, method);
+				}
 				companion.host = star;
 				// Special Case: Orbit# for companions of giants (Ia, Ib, II, or III) = 1D x MAO of the primary star (i.e. the giant)
 				if (star.type <= MAIN_TYPE_M && star.classification < 4) {
@@ -3559,6 +3642,74 @@ class StarSystemFactory extends AbstractFactory
 		}
 		// Any Post-Stellar objects such as White Dwarfs can qualify if they are dimmer than an M5 V star (i.e. 0.0029)
 		return star.isPostStellar() && star.getTotalLuminosity() < 0.0029;
+	}
+
+	getSecondariesFromProfiles(primary, profiles)
+	{
+		let secondaries = [
+			{'present': primary, 'companion': false},
+			{'present': false, 'companion': false},
+			{'present': false, 'companion': false},
+			{'present': false, 'companion': false},
+		];
+		const close_ok = !primary.isGiant();
+		const max_stars = Math.min(profiles.length, (close_ok ? 8 : 6));
+		for (let i = 1; i < max_stars; i++) {
+			const star = this.star_factory.fromProfile(profiles[i]);
+			let flag = false;
+			while (!flag) {
+				let roll = this.roll(1, 6, 0, 'Existing Star Location: ' + star.getProfileShort());
+				// 3+ Star Systems use Far instead of Roll Again on a roll of 6
+				if (roll === 6 && profiles.length > 2) {
+					roll = 4;
+				}
+				if (roll < 5) {
+					for (let j = roll - 1; !flag && j < secondaries.length; j++) {
+						// Close band is not allowed if primary is a giant
+						if (!close_ok && j === 1) j++;
+						if (!secondaries[j]['present']) {
+							flag = true;
+							secondaries[j]['present'] = star;
+							log('Placed secondary star ' + star.getProfileShort() + ' in band #' + j);
+						} else if (!secondaries[j]['companion']) {
+							flag = true;
+							// Swap them if the companion would be more massive
+							if (star.getTotalMass() > secondaries[j]['present'].getTotalMass()) {
+								secondaries[j]['companion'] = secondaries[j]['present'];
+								secondaries[j]['present'] = star;
+								log('Placed secondary star ' + star.getProfileShort() + ' as host in band #' + j + '; less massive host swapped to companion');
+							} else {
+								secondaries[j]['companion'] = star;
+								log('Placed secondary star ' + star.getProfileShort() + ' as companion in band #' + j);
+							}
+						}
+						// Check again starting from the primary
+						if (j === secondaries.length - 1) j = -1;
+					}
+				} else if (roll === 5) {
+					// Attempt to match secondary star as a companion to an existing star, but only if same type and class
+					for (let k = 0; !flag && k < secondaries.length; k++) {
+						if (secondaries[k]['present'] instanceof AbstractStar && !secondaries[k]['companion']) {
+							flag = (secondaries[k]['present'].type === star.type && secondaries[k]['present'].classification === star.classification);
+							if (flag) {
+								// Swap them if the companion would be more massive
+								if (star.getTotalMass() > secondaries[k]['present'].getTotalMass()) {
+									secondaries[k]['companion'] = secondaries[k]['present'];
+									secondaries[k]['present'] = star;
+									log('Placed secondary star ' + star.getProfileShort() + ' as host in band #' + k + '; less massive host swapped to companion');
+								} else {
+									secondaries[k]['companion'] = star;
+									log('Placed secondary star ' + star.getProfileShort() + ' as companion in band #' + k);
+								}
+							}
+						}
+					}
+				}
+				// Roll again on a 6 or 5 that didn't find a match
+			}
+			this.flushHistory(star);
+		}
+		return secondaries;
 	}
 
 	getSecondaryPresenceMod(primary)
@@ -5638,6 +5789,32 @@ function calculateHabitableCenterZone(luminosity)
 }
 
 /**
+ * @return string Converts a Roman Numeral to its positive integer equivalent
+ * @throws SyntaxError if improperly formatted
+ */
+function convertFromRoman(roman)
+{
+	const lookup = {C:100,XC:90,L:50,XL:40,X:10,IX:9,V:5,IV:4,I:1};
+	let number = 0;
+	for (let i = 0; i < roman.length; i++) {
+		let k = roman[i];
+		if (k === 'I' && (i+1) < roman.length && ['V','X'].includes(roman[i+1])) {
+			k = k + roman[i+1];
+			i++;
+		}
+		if (k === 'X' && (i+1) < roman.length && ['C','L'].includes(roman[i+1])) {
+			k = k + roman[i+1];
+			i++;
+		}
+		if (!lookup.hasOwnProperty(k)) {
+			throw new SyntaxError('Failed to parse invalid Roman Numeral: ' + roman);
+		}
+		number += lookup[k];
+	}
+	return number;
+}
+
+/**
  * @return string Converts a positive integer < 399 to its Roman Numeral equivalent
  */
 function convertToRoman(number)
@@ -5688,7 +5865,9 @@ function getStarSystem(data)
 	const star_factory = new StarFactory(data);
 	const world_factory = new WorldFactory(data);
 	const system_factory = new StarSystemFactory(star_factory, world_factory, data);
-	return system_factory.generate();
+	const stars_input = document.getElementById('system_profile');
+	const star_profiles = (stars_input ? stars_input.value.split(':').filter(s => s.length > 0) : []);
+	return system_factory.generate(star_profiles);
 }
 
 function displayStarSystem(system, data)
@@ -5815,7 +5994,15 @@ window.addEventListener("load", function(event)
 	{
 		e.preventDefault();
 		const data = new FormData(e.target);
-		const output = getStarSystem(data);
+		const err_div = document.getElementById('error');
+		err_div.classList.replace('show', 'hide');
+		let output = null;
+		try {
+			output = getStarSystem(data);
+		} catch (err) {
+			err_div.classList.replace('hide', 'show');
+			err_div.innerHTML = err.message;
+		}
 		if (output instanceof StarSystem) {
 			document.getElementById('system_profile_short').innerHTML = output.getProfileShort();
 			document.getElementById('system_profile_long').innerHTML = output.getProfileLong().split(':').join('<br>:');
