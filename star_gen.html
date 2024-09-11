@@ -96,20 +96,20 @@
 	</head>
 	<body style="padding: 5px;">
 		<h1 class="small-caps">Star System Generator</h1>
-		<div class="container w-40">
-			<h2>Continuation Method</h2>
-			<hr>
-			<div id="options_continuation" class="hide">
-				<div class="input_container">
-					<label for="system_profile">Star Profile(s)</label>
-					<input id="system_profile" class="block" type="text" name="system_profile" />
-					<span class="text-sm">Standard 3-part star profiles only (e.g. M0 V or BD), separated by colons.</span>
-				</div>
-				<p id="error" class="text-bold text-red hide"></p>
-			</div>
-			<p class="show-options"><a href="#" onclick="return toggleShowOptions(event, this, 'options_continuation')">Show More</a></p>
-		</div>
 		<form id="form" style="padding-bottom: 5px;" method="get" action="#" accept-charset="utf-8">
+			<div class="container w-40">
+				<h2>Continuation Method</h2>
+				<hr>
+				<div id="options_continuation" class="hide">
+					<div class="input_container">
+						<label for="system_profile">Star Profile(s)</label>
+						<input id="system_profile" class="block" type="text" name="system_profile" />
+						<span class="text-sm">Standard 3-part star profiles only (e.g. M0 V or BD), separated by colons.</span>
+					</div>
+					<p id="error" class="text-bold text-red hide"></p>
+				</div>
+				<p class="show-options"><a href="#" onclick="return toggleShowOptions(event, this, 'options_continuation')">Show More</a></p>
+			</div>
 			<div class="container w-40">
 				<h2>Options</h2>
 				<hr>
@@ -5866,8 +5866,7 @@ function getStarSystem(data)
 	const star_factory = new StarFactory(data);
 	const world_factory = new WorldFactory(data);
 	const system_factory = new StarSystemFactory(star_factory, world_factory, data);
-	const stars_input = document.getElementById('system_profile');
-	const star_profiles = (stars_input ? stars_input.value.split(':').filter(s => s.length > 0) : []);
+	const star_profiles = (data.has('system_profile') ? data.get('system_profile').split(':').filter(s => s.length > 0) : []);
 	return system_factory.generate(star_profiles);
 }
 
