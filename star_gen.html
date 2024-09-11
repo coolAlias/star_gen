@@ -107,6 +107,10 @@
 						<span class="text-sm">Standard 3-part star profiles only (e.g. M0 V or BD), separated by colons.</span>
 					</div>
 					<p id="error" class="text-bold text-red hide"></p>
+					<div class="input_container">
+						<label for="cont_sec"><input id="cont_sec" name="cont_sec" type="checkbox" /> Check for Secondaries</label>
+						<span class="text-sm">Check for additional secondary stars when only the primary is known.</span>
+					</div>
 				</div>
 				<p class="show-options"><a href="#" onclick="return toggleShowOptions(event, this, 'options_continuation')">Show More</a></p>
 			</div>
@@ -3322,6 +3326,7 @@ class StarSystemFactory extends AbstractFactory
 	 *   @option bool cumulative_orbit True to calculate each planetary orbit from the previous orbit, i.e. with cumulative variance
 	 *   @option bool per_star_baseline True to calculate baseline number, baseline Orbit#, and system spread for each secondary and companion star separately
 	 *   @option bool per_star_empty_orbits True to determine empty orbits for each star (or group) individually, rather than for the system as a whole
+	 *   @option bool cont_sec True to enable checking for secondary stars when only the primary was provided (Continuation Method)
 	 */
 	constructor(star_factory, world_factory, options)
 	{
@@ -3333,6 +3338,7 @@ class StarSystemFactory extends AbstractFactory
 		this.cumulative_orbit = options.has('cumulative_orbit');
 		this.per_star_baseline = options.has('per_star_baseline');
 		this.per_star_empty_orbits = options.has('per_star_empty_orbits');
+		this.continuation_add_secondaries = options.has('cont_sec');
 		this.bands = ['Primary', 'Close', 'Near', 'Far'];
 	}
 
@@ -3351,7 +3357,7 @@ class StarSystemFactory extends AbstractFactory
 		stars.push(primary);
 		
 		// Step 2: Determine presence of Secondary and/or Companion Star(s)
-		let secondaries = (profiles.length > 0
+		let secondaries = (profiles.length > (this.continuation_add_secondaries ? 1 : 0)
 			? this.getSecondariesFromProfiles(primary, profiles)
 			: this.checkForSecondaryObjects(primary));
 		
