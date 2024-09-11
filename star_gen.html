@@ -2457,15 +2457,16 @@ class StarFactory extends AbstractFactory
 	 */
 	fromProfile(entry, primary = false)
 	{
-		const number = (entry.length > 1 ? Number.parseInt(entry.substring(1, 2)) : NaN);
+		const upper = entry.toUpperCase();
+		const number = (entry.length > 1 ? Number.parseInt(upper.substring(1, 2)) : NaN);
 		const subtype = (Number.isNaN(number) ? -1 : number);
-		const type = this.parseType(subtype < 0 ? entry : entry.substring(0, 1));
+		const type = this.parseType(subtype < 0 ? upper : upper.substring(0, 1));
 		if (Number.isNaN(type)) {
 			throw new SyntaxError('Failed to parse Type for star entry ' + entry + '; subtype = ' + subtype);
 		} else if ((subtype < 0 && type <= MAIN_TYPE_M) || (subtype > -1 && type > MAIN_TYPE_M)) {
 			throw new SyntaxError('Invalid Subtype for Type ' + type + ' star entry ' + entry);
 		}
-		const classification = this.parseClass(type, entry);
+		const classification = this.parseClass(type, upper);
 		const star = new Star(type, subtype, classification, primary);
 		log('Successfully generated star from profile: ' + star.getProfileShort());
 		this.genStarTraits(star);
@@ -2484,8 +2485,8 @@ class StarFactory extends AbstractFactory
 	{
 		if (type > MAIN_TYPE_M) return -1;
 		// Special Case: Classes Ia and Ib
-		if (entry.endsWith('Ia')) return 0;
-		if (entry.endsWith('Ib')) return 1;
+		if (entry.endsWith('IA')) return 0;
+		if (entry.endsWith('IB')) return 1;
 		return convertFromRoman(entry.substring(3));
 	}
 
