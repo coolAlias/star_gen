@@ -51,6 +51,10 @@
 				margin: 8px 0px 8px 0px;
 				width: fit-content;
 			}
+			.flex-row {
+				display: flex;
+				flex-direction: row;
+			}
 			.footnote {
 				font-size: 0.8rem;
 				font-style: italic;
@@ -59,8 +63,14 @@
 			.show-options {
 				margin: 8px;
 			}
+			.w-60 {
+				width: 60%;
+			}
 			.w-40 {
 				width: 40%;
+			}
+			.w-20 {
+				width: 20%;
 			}
 			.center {
 				text-align: center;
@@ -110,6 +120,32 @@
 					<div class="input_container">
 						<label for="cont_sec"><input id="cont_sec" name="cont_sec" type="checkbox" /> Check for Secondaries</label>
 						<span class="text-sm">Check for additional secondary stars when only the primary is known.</span>
+					</div>
+					<div class="input_container">
+						<h4 class="small-caps">System Planetary Profile</h4>
+						<div class="flex-row">
+							<div class="w-20">
+								<label>Gas Giants</label>
+								<input class="center w-60" name="cont_spp" type="number" min="0" step="1" />
+							</div>
+							<div class="w-20">
+								<label>Belts</label>
+								<input class="center w-60" name="cont_spp" type="number" min="0" step="1" />
+							</div>
+							<div class="w-20">
+								<label>Terrestrial</label>
+								<input class="center w-60" name="cont_spp" type="number" min="0" step="1" />
+							</div>
+							<div class="w-20">
+								<label>Baseline</label>
+								<input class="center w-60" name="cont_spp" type="number" step="1" />
+							</div>
+							<div class="w-20">
+								<label>Spread</label>
+								<input class="center w-60" name="cont_spp" type="number" min="0" step="0.001" />
+							</div>
+						</div>
+						<span class="text-sm">Enter 0 if none or leave blank to generate a value using the usual procedures.</span>
 					</div>
 				</div>
 				<p class="show-options"><a href="#" onclick="return toggleShowOptions(event, this, 'options_continuation')">Show More</a></p>
@@ -3345,22 +3381,23 @@ class StarSystemFactory extends AbstractFactory
 	}
 
 	/**
-	 * @param array profiles Optional profiles for existing stars when using the Continuation method
+	 * @param array profile_stars Optional profiles for existing stars when using the Continuation method
+	 * @param array profile_planets Optional System Planetary Profile data for number of existing planets, Baseline Number, and System Spread when using the Continuation method
 	 */
-	generate(profiles = [])
+	generate(profile_stars = [], profile_planets = [])
 	{
 		//=== STAR GEN ===//
 		// Step 1: Determine Primary Star
 		let stars = [];
-		const primary = (profiles.length > 0
-			? this.star_factory.fromProfile(profiles[0], true)
+		const primary = (profile_stars.length > 0
+			? this.star_factory.fromProfile(profile_stars[0], true)
 			: this.star_factory.generate());
 		this.star_factory.flushHistory(primary);
 		stars.push(primary);
 		
 		// Step 2: Determine presence of Secondary and/or Companion Star(s)
-		let secondaries = (profiles.length > (this.continuation_add_secondaries ? 1 : 0)
-			? this.getSecondariesFromProfiles(primary, profiles)
+		let secondaries = (profile_stars.length > (this.continuation_add_secondaries ? 1 : 0)
+			? this.getSecondariesFromProfiles(primary, profile_stars)
 			: this.checkForSecondaryObjects(primary));
 		
 		// Step 3: Determine Orbit#(s) and Eccentricity
@@ -3466,7 +3503,7 @@ class StarSystemFactory extends AbstractFactory
 			}
 		});
 		// Step 8: Determine number of planets, if any, orbiting each star and/or star group
-		let system = this.genWorldCounts(new StarSystem(stars));
+		let system = this.genWorldCounts(new StarSystem(stars), profile_planets);
 		system.n_orbits = this.determineTotalSystemOrbits(system);
 		this.flushHistory(system);
 		
@@ -3478,7 +3515,9 @@ class StarSystemFactory extends AbstractFactory
 			// Step 2: Determine system baseline number
 			// Only care about Primary group's HZCO for this step, even though it has the combined orbit slots for all of A, AB, ABC, and ABCD groups
 			const p_group = system.getPrimaryStarComponent();
-			system.baseline_number = this.determineBaselineNumber(system, p_group, false);
+			system.baseline_number = (profile_planets.length > 3 && profile_planets[3] !== null
+				? profile_planets[3]
+				: this.determineBaselineNumber(system, p_group, false));
 			
 			// Step 3: Determine system baseline Orbit#
 			// Since the primary group itself may not have any orbits, use the first primary group that does for HZCO and Min/Max Allowable Orbit#s
@@ -3494,10 +3533,14 @@ class StarSystemFactory extends AbstractFactory
 			this.determineEmptyOrbits(system);
 			
 			// Step 5: Determine system spread
-			system.orbit_spread = round(this.determineSystemSpread(system, active_group), 3);
+			system.orbit_spread = (profile_planets.length > 4 && profile_planets[4] !== null
+				? round(profile_planets[4], 3)
+				: round(this.determineSystemSpread(system, active_group), 3));
 			system.orbit_spread_max = round(this.determineSystemSpreadMax(system), 3);
 			// Add a bit more variability when the minimum orbit_spread is significantly less than the potential maximum
-			if ((system.orbit_spread_max / system.orbit_spread) > (system.n_planets + system.n_empty)) {
+			if (profile_planets.length > 3 && profile_planets[3] !== null) {
+				// Do not adjust user-entered system spread
+			} else if ((system.orbit_spread_max / system.orbit_spread) > (system.n_planets + system.n_empty)) {
 				const spread_half = system.orbit_spread_max / 2;
 				const spread_mod = 0.1 * spread_half * this.roll(2, 6, -7, 'System Spread: Additional Amount (default was too small)');
 				log('System Spread of ' + system.orbit_spread + ' is far smaller than Max of ' + system.orbit_spread_max + '; increasing by +' + (spread_half + spread_mod));
@@ -3861,14 +3904,16 @@ class StarSystemFactory extends AbstractFactory
 
 	/**
 	 * @param StarSystem system A newly created star system with all of the star-data already determined
+	 * @param array planets See StarSystemFactory::generate, #planet_profiles
 	 *
 	 * @return StarSystem with the number of each type of world determined
 	 */
-	genWorldCounts(system)
+	genWorldCounts(system, planets = [])
 	{
 		const primary = system.getPrimaryStar();
+		const n_planets = planets.reduce((n, value, index) => n + (index < 3 && value !== null ? value : 0));
 		// Special Case: Dead star systems (i.e. those with a post-stellar primary) may not have any planets at all
-		if (primary.isPostStellar()) {
+		if (n_planets < 1 && primary.isPostStellar()) {
 			let dm = 0;
 			// DM-2 if multiple post-stellar objects
 			dm -= (system.stars.reduce((n, star) => n + (star.isPostStellar() ? 1 : 0), 0) > 1 ? 2 : 0);
@@ -3883,9 +3928,9 @@ class StarSystemFactory extends AbstractFactory
 				return system;
 			}
 		}
-		system.n_planet_gas = this.genGasGiantCount(system);
-		system.n_planet_belt = this.getPlanetoidBeltCount(system);
-		system.n_planet_rock = this.genTerrestrialPlanetCount(system);
+		system.n_planet_gas = (planets.length > 0 && planets[0] !== null ? planets[0] : this.genGasGiantCount(system));
+		system.n_planet_belt = (planets.length > 1 && planets[1] !== null ? planets[1] : this.getPlanetoidBeltCount(system));
+		system.n_planet_rock = (planets.length > 2 && planets[2] !== null ? planets[2] : this.genTerrestrialPlanetCount(system));
 		system.n_planets = system.n_planet_gas + system.n_planet_belt + system.n_planet_rock;
 		return system;
 	}
@@ -5926,7 +5971,8 @@ function getStarSystem(data)
 	const world_factory = new WorldFactory(data);
 	const system_factory = new StarSystemFactory(star_factory, world_factory, data);
 	const star_profiles = (data.has('system_profile') ? data.get('system_profile').split(':').filter(s => s.length > 0) : []);
-	return system_factory.generate(star_profiles);
+	const planetary_profile = (data.has('cont_spp') ? data.getAll('cont_spp').map((s) => s.trim()).map((s) => s.length > 0 ? Number(s) : null) : Array(5).fill(null));
+	return system_factory.generate(star_profiles, planetary_profile);
 }
 
 function displayStarSystem(system, data)
