@@ -28,6 +28,10 @@
 				font-weight: bold;
 				padding-bottom: 2px;
 			}
+			input[type=number], input[type=text] {
+				min-width: 4rem;
+				padding: 2px;
+			}
 			input[type=checkbox] {
 				display: inline-block;
 				transform: scale(1.25);
@@ -52,8 +56,12 @@
 				width: fit-content;
 			}
 			.flex-row {
+				align-items: center;
 				display: flex;
 				flex-direction: row;
+			}
+			.flex-row * {
+				margin-right: 8px;
 			}
 			.footnote {
 				font-size: 0.8rem;
@@ -111,47 +119,45 @@
 				<h2>Continuation Method</h2>
 				<hr>
 				<div id="options_continuation" class="hide">
-					<div class="input_container">
-						<label for="system_profile">Star Profile(s)</label>
-						<input id="system_profile" class="block" type="text" name="system_profile" />
-						<span class="text-sm">Standard 3-part star profiles only (e.g. M0 V or BD), separated by colons.</span>
+					<div class="flex-row">
+						<div class="input_container">
+							<label for="system_profile" class="small-caps">Star Profile(s) <input id="system_profile" class="inline" type="text" name="system_profile" /></label>
+						</div>
+						<div class="input_container">
+							<label for="cont_sec"><input id="cont_sec" name="cont_sec" type="checkbox" /> Check for Secondaries</label>
+						</div>
 					</div>
-					<p id="error" class="text-bold text-red hide"></p>
-					<div class="input_container">
-						<label for="cont_sec"><input id="cont_sec" name="cont_sec" type="checkbox" /> Check for Secondaries</label>
-						<span class="text-sm">Check for additional secondary stars when only the primary is known.</span>
-					</div>
-					<div class="input_container">
+					<div class="container">
 						<h4 class="small-caps">System Planetary Profile</h4>
 						<div class="flex-row">
-							<div class="w-20">
+							<div class="input_container">
 								<label>Gas Giants</label>
 								<input class="center w-60" name="cont_spp" type="number" min="0" step="1" />
 							</div>
-							<div class="w-20">
+							<div class="input_container">
 								<label>Belts</label>
 								<input class="center w-60" name="cont_spp" type="number" min="0" step="1" />
 							</div>
-							<div class="w-20">
+							<div class="input_container">
 								<label>Terrestrial</label>
 								<input class="center w-60" name="cont_spp" type="number" min="0" step="1" />
 							</div>
-							<div class="w-20">
+							<div class="input_container">
 								<label>Baseline</label>
 								<input class="center w-60" name="cont_spp" type="number" step="1" />
 							</div>
-							<div class="w-20">
+							<div class="input_container">
 								<label>Spread</label>
 								<input class="center w-60" name="cont_spp" type="number" min="0" step="0.001" />
 							</div>
 						</div>
-						<span class="text-sm">Enter 0 if none or leave blank to generate a value using the usual procedures.</span>
 					</div>
+					<p id="error" class="text-bold text-red hide"></p>
 				</div>
 				<p class="show-options"><a href="#" onclick="return toggleShowOptions(event, this, 'options_continuation')">Show More</a></p>
 			</div>
 			<div class="container w-40">
-				<h2>Options</h2>
+				<h2>Standard Options</h2>
 				<hr>
 				<div class="input_container">
 					<label for="star_trad_gen"><input id="star_trad_gen" name="star_trad_gen" type="checkbox" checked /> Traditional Traveller Star Distributions</label>

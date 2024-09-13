@@ -16,7 +16,15 @@ The application can run in any modern browser (e.g. Firefox), no internet or loc
 
 3. You should now see the application running in your browser, just like any other web page, no interent required!
 
-## Options
+## Continuation Method
+
+**Star Profile(s)** Accepts standard profiles, separated by colons. E.g. "M0 V" for a single star or "M0 V:BD" for a binary (but not necessarily Companion) star system.
+
+**Check for Secondaries** When only a single Star Profile is provided, this option enables checking for additional Secondary Stars using the normal procedures.
+
+**System Planetary Profile** Optionally enter the number of each type of planetary body, System Baseline Number, and/or System Spread; any left blank will be determined using the normal procedures.
+
+## Standard Options
 
 **Star Type Distribution** Use "Traditional Traveller" for a more varied universe, or "Realistic" to include more Type M stars.
 
