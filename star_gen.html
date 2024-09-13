@@ -6147,12 +6147,12 @@ window.addEventListener("load", function(event)
 			output.star_groups.forEach(star => {
 				if (star.history.length > 0) {
 					history.appendChild(document.createElement('hr'));
-					history.appendChild(document.createTextNode('Rolls for ' + (star.primary ? 'Primary ' : 'Secondary ') + star.getProfileLong()));
+					history.appendChild(document.createTextNode('Rolls for ' + (star.primary ? 'Primary ' : 'Secondary ') + star.getDesignation(output.n_stellar)));
 					history.appendChild(buildRollHistoryTable(star));
 				}
 				if (star.companion && star.companion.history.length > 0) {
 					history.appendChild(document.createElement('hr'));
-					history.appendChild(document.createTextNode('Rolls for Companion ' + star.companion.getProfileLong()));
+					history.appendChild(document.createTextNode('Rolls for Companion ' + star.companion.getDesignation(output.n_stellar)));
 					history.appendChild(buildRollHistoryTable(star.companion));
 				}
 			});
