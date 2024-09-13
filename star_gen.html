@@ -4377,6 +4377,10 @@ class StarSystemFactory extends AbstractFactory
 			if (this.per_star_empty_orbits) {
 				for (let k = 0; k < group.n_empty; k++) {
 					let index = this.roll(1, n_bodies, -1, 'World Placement: Empty Orbit for ' + group.getDesignation(system.n_stellar));
+					// Ensure empty orbit placed in an undetermined slot
+					while (worlds[worlds.length - n_bodies + index]['type'] !== null) {
+						index = (index + 1 === n_bodies ? 0 : index + 1);
+					}
 					worlds[worlds.length - n_bodies + index]['type'] = PLANET_EMPTY;
 				}
 			}
