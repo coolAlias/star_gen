@@ -24,6 +24,16 @@ The application can run in any modern browser (e.g. Firefox), no internet or loc
 
 **System Planetary Profile** Optionally enter the number of each type of planetary body, System Baseline Number, and/or System Spread; any left blank will be determined using the normal procedures.
 
+**Main World**
+
+Worlds with an Atmosphere code of 4-9 will be placed around an HZCO if possible. Worlds with any other atmosphere type will be placed at random.
+
+- UWP: Supports SAH, ?SAHPGL (? = optional Starport rating), and standard full UWP ESAHGPL-T.
+
+- Temperature: Adjusts placement of worlds around the HZCO based on an estimated Raw Temperature Roll; final temperature may differ due to actual 2D+DMs roll.
+
+- Satellite of: Selecting Gas Giant or Terrestrial will place the main world as a satellite around that type of planet. The default "Auto" option places the main world as its own body; Planetary Rings are placed preferentially around Gas Giants.
+
 ## Standard Options
 
 **Star Type Distribution** Use "Traditional Traveller" for a more varied universe, or "Realistic" to include more Type M stars.
