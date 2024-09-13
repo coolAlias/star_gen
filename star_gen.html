@@ -4937,6 +4937,8 @@ class WorldFactory extends AbstractFactory
 	{
 		// DM-1 for Low Oxygen taint, in addition to any other DMs
 		const dm = (atmosphere.taints.find(t => t.subtype === TAINT_L) === undefined ? 0 : -1);
+		// DM+0 for Atmosphere 6
+		if (atmosphere.type === 6) return dm;
 		// DM-8 for Atmosphere 0, 1, or 10 (A)
 		if ([0, 1, 10].includes(atmosphere.type)) return dm - 8;
 		// DM-4 for Atmosphere 2 or 14 (E)
