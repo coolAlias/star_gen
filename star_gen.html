@@ -3980,7 +3980,7 @@ class StarSystemFactory extends AbstractFactory
 		}
 		let dm = 0;
 		// DM+1 System has 1 or more gas giants
-		if (system.n_gas > 0) dm += 1;
+		if (system.n_planet_gas > 0) dm += 1;
 		// DM+3 Primary star is a protostar
 		if (primary.type === PROTOSTAR) dm += 3;
 		// DM+2 (p37, or DM+4 per p225) Primary star is primordial (i.e. system is < 100 million years old [0.1 Gyrs] but beyond its protostar stage)
