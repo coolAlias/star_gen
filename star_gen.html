@@ -152,6 +152,31 @@
 							</div>
 						</div>
 					</div>
+					<div class="container">
+						<div class="flex-row">
+							<div class="input_container">
+								<label for="cont_uwp" class="small-caps">Main World Uwp</label>
+								<input id="cont_uwp" class="block" name="cont_uwp" type="text" />
+							</div>
+							<div class="input_container">
+								<label for="cont_temp">Temperature</label>
+								<select id="cont_temp" name="cont_temp">
+									<option value="7">Temperate</option>
+									<option value="10">Hot</option>
+									<option value="4">Cold</option>
+								</select>
+							</div>
+							<div class="input_container">
+								<label for="cont_host">Satellite of:</label>
+								<select id="cont_host" name="cont_host">
+									<option value="-1">Auto</option>
+									<option value="1">Gas Giant</option>
+									<option value="3">Terrestrial</option>
+								</select>
+							</div>
+						</div>
+						<span class="text-sm">Acceptable formats: SAH, ?SAHPGL (? = optional Starport code), or full the UWP (e.g. CA6A643-9).</span>
+					</div>
 					<p id="error" class="text-bold text-red hide"></p>
 				</div>
 				<p class="show-options"><a href="#" onclick="return toggleShowOptions(event, this, 'options_continuation')">Show More</a></p>
@@ -2042,6 +2067,28 @@ class World extends OrbitingBody
 		this.designation_suffix = convertToRoman(this.index);
 		this.hill_sphere = 0;
 		this.moon_orbit_range = 0;
+		// Starport and PGL-T Social Characteristics
+		this.starport = -1;
+		this.population = -1;
+		this.government = -1;
+		this.law = -1;
+		this.technology = -1;
+		// Continuation Method: World Profile for main world, if any
+		this.world_profile = null;
+	}
+
+	/**
+	 * Applies the Starport and PGL-T traits from the existing main world profile, if any and if applicable
+	 */
+	applyMainWorldProfile()
+	{
+		if (this.world_profile && this.world_profile.isApplicable(this)) {
+			this.starport = this.world_profile.starport;
+			this.population = this.world_profile.population;
+			this.government = this.world_profile.government;
+			this.law = this.world_profile.law;
+			this.technology = this.world_profile.technology;
+		}
 	}
 
 	/**
@@ -2089,9 +2136,31 @@ class World extends OrbitingBody
 	getProfileShort()
 	{
 		if (this.type === PLANET_GAS) return this.getSizeCode();
-		return '' + this.getSizeCode()
-			+ (this.atmosphere ? this.atmosphere.code : '0')
-			+ toHexCode(this.hydrographics);
+		return (this.starport > -1 ? toHexCode(this.starport) : '')
+			+ this.getPhysicalProfile()
+			+ this.getSocialProfile();
+	}
+
+	getPhysicalProfile()
+	{
+		const sah = [
+			this.getSizeCode(),
+			(this.atmosphere ? this.atmosphere.code : '0'),
+			toHexCode(this.hydrographics),
+		];
+		return sah.join('');
+	}
+
+	getSocialProfile()
+	{
+		if (this.population < 0) return '';
+		const pgl = [
+			toHexCode(this.population),
+			toHexCode(this.government),
+			toHexCode(this.law),
+			(this.technology > -1 ? '-' + toHexCode(this.technology) : ''),
+		];
+		return pgl.join('');
 	}
 
 	getSizeCode()
@@ -2323,6 +2392,141 @@ class PlanetaryRing extends Moon
 	}
 }
 
+class WorldProfile
+{
+	constructor(uwp, temperature = 7, host = -1)
+	{
+		if (![-1, PLANET_GAS, PLANET_ROCK].includes(host)) {
+			throw new SyntaxError('Invalid host for satellite Main World; valid types are: Auto (-1), Gas Giant (1), and Terrestrial (3)');
+		}
+		this.type = PLANET_ROCK;
+		this.host = host < 0 ? null : host;
+		this.starport = -1;
+		this.size = -1;
+		this.atmosphere = -1;
+		this.hydrographics = -1;
+		this.population = -1;
+		this.government = -1;
+		this.law = -1;
+		this.technology = -1;
+		this.temperature = temperature;
+		this.parseProfile(uwp);
+		this.uwp = uwp;
+		// Additional fields for use during world placement process:
+		this.orbit_index = -1;
+		this.star_group = null;
+		this.n_planet_belt = 0;
+		this.n_planet_gas = 0;
+	}
+
+	/**
+	 * @return int The initial type of planet to place for the main world; this may be the planet the main world orbits, rather than the main world itself
+	 */
+	getMainPlanetType(system)
+	{
+		// Special Case: Planetary Rings placed preferentially around Gas Giant, but a Terrestrial will do if none
+		if (this.host === null && this.type === PLANET_RING) {
+			this.host = (system.n_planet_gas > 0 ? PLANET_GAS : PLANET_ROCK);
+		}
+		return this.host === null ? this.type : this.host;
+	}
+
+	getHzcoDeviation()
+	{
+		const atmosphere = new Atmosphere(this.atmosphere);
+		const dm = atmosphere.getTemperatureMod();
+		const roll = this.temperature - dm;
+		const base = 7 - roll;
+		const abs = Math.abs(base);
+		if (abs < 3) return 0.1 * base;
+		if (abs < 4) return (base < 0 ? -0.5 : 0.5);
+		if (abs < 5) return (base < 0 ? -1.0 : 1.0);
+		return (base < 0 ? -1.1 : 1.1);
+	}
+
+	/**
+	 * @return bool True if this profile is applicable to the world in question
+	 */
+	isApplicable(world)
+	{
+		// Special Case: Moons can be either PLANET_MOON or PLANET_ROCK
+		const types = (this.type === PLANET_MOON ? [PLANET_MOON, PLANET_ROCK] : [this.type]);
+		return this.host === null
+			? world.type === this.type && world.host instanceof AbstractStar
+			: types.includes(world.type) && world.host instanceof World && world.host.type === this.host;
+	}
+
+	getProfile()
+	{
+		return this.uwp;
+	}
+
+	parseProfile(uwp)
+	{
+		if (uwp.length === 7 || uwp.length === 9) {
+			// Starport values range from 10-14 (A-E) and use 31 (X) to designate none instead of 0
+			this.starport = this.parseValue(uwp[0], 10, 14, 'Starport', [31]);
+			this.parsePhysical(uwp.substring(1));
+			this.parseSocial(uwp.substring(4));
+			// No practical cap on TL
+			if (uwp.length === 9) {
+				this.technology = this.parseValue(uwp[8], 0, 33, 'Technology Level');
+			}
+		} else if (uwp.length === 6) {
+			this.parsePhysical(uwp);
+			this.parseSocial(uwp.substring(3));
+		} else if (uwp.length === 3) {
+			this.parsePhysical(uwp);
+		} else {
+			throw new SyntaxError('World Profile format must be either SAH, ?SAHPGL, or ?SAHPGL-T');
+		}
+	}
+
+	parsePhysical(part)
+	{
+		this.size = this.parseValue(part[0], 0, 15, 'Size', [25,26]);
+		// Special Case: Size 0 is a Planetoid Belt
+		if (this.size === 0) {
+			this.type = PLANET_BELT;
+			if (this.host !== null) {
+				throw new SyntaxError('Planetoid Belt cannot be a satellite of another body');
+			}
+		}
+		// Special Case: Use -1 for Size S (Small)
+		if (this.size === 26) {
+			this.size = -1;
+		}
+		// Special Case: Use 0 for Size R (Ring) and indicate it is a Planetary Ring
+		if (this.size === 25) {
+			this.size = 0;
+			this.type = PLANET_RING;
+		}
+		// Special Case: Terrestrial worlds in orbit around another body are treated as Moons
+		if (this.type === PLANET_ROCK && this.host !== null) {
+			this.type = PLANET_MOON;
+		}
+		this.atmosphere = this.parseValue(part[1], 0, (this.size < 1 ? 0 : 17), 'Atmosphere');
+		this.hydrographics = this.parseValue(part[2], 0, (this.size < 2 ? 0 : 10), 'Hydrographics');
+	}
+
+	parseSocial(part)
+	{
+		// Population typically caps at 12, but may be higher in some universes
+		this.population = this.parseValue(part[0], 0, 15, 'Population');
+		this.government = this.parseValue(part[1], 0, 15, 'Government');
+		// Law Level is 2D-7 + government code, with a minimum of 0, so ranges from 0 to 20
+		this.law = this.parseValue(part[2], 0, 20, 'Law Level');
+	}
+
+	parseValue(value, min, max, field, extra = [])
+	{
+		const v = fromHexCode(value);
+		if (v < min && !extra.includes(v)) throw new SyntaxError('Minimum value for ' + field + ' is ' + min);
+		if (v > max && !extra.includes(v)) throw new SyntaxError('Maximum value for ' + field + ' is ' + max);
+		return v;
+	}
+}
+
 class Atmosphere
 {
 	/**
@@ -2389,6 +2593,22 @@ class Atmosphere
 	getTaintProfile()
 	{
 		return this.taints.map(taint => taint.getProfileLong()).join(', ');
+	}
+
+	getTemperatureMod()
+	{
+		// DM-2 for Atmosphere 2 or 3
+		if (this.type === 2 || this.type === 3) return -2;
+		// DM-1 for Atmosphere 4, 5, or E
+		if ([4, 5, 14].includes(this.type)) return -1;
+		// DM+1 for Atmosphere 8 or 9
+		if (this.type === 8 || this.type === 9) return 1;
+		// DM+2 for Atmosphere A, D, or F
+		if ([10, 13, 15].includes(this.type)) return 2;
+		// DM+6 for Atmosphere B or C
+		if (this.type === 11 || this.type === 12) return 6;
+		// DM+0 for anything else
+		return 0;
 	}
 
 	getTypeName()
@@ -3397,8 +3617,9 @@ class StarSystemFactory extends AbstractFactory
 	/**
 	 * @param array profile_stars Optional profiles for existing stars when using the Continuation method
 	 * @param array profile_planets Optional System Planetary Profile data for number of existing planets, Baseline Number, and System Spread when using the Continuation method
+	 * @param WorldProfile|null world_profile Optional main world profile
 	 */
-	generate(profile_stars = [], profile_planets = [])
+	generate(profile_stars = [], profile_planets = [], world_profile = null)
 	{
 		//=== STAR GEN ===//
 		// Step 1: Determine Primary Star
@@ -3517,7 +3738,7 @@ class StarSystemFactory extends AbstractFactory
 			}
 		});
 		// Step 8: Determine number of planets, if any, orbiting each star and/or star group
-		let system = this.genWorldCounts(new StarSystem(stars), profile_planets);
+		let system = this.genWorldCounts(new StarSystem(stars), profile_planets, world_profile);
 		system.n_orbits = this.determineTotalSystemOrbits(system);
 		this.flushHistory(system);
 		
@@ -3551,15 +3772,6 @@ class StarSystemFactory extends AbstractFactory
 				? round(profile_planets[4], 3)
 				: round(this.determineSystemSpread(system, active_group), 3));
 			system.orbit_spread_max = round(this.determineSystemSpreadMax(system), 3);
-			// Add a bit more variability when the minimum orbit_spread is significantly less than the potential maximum
-			if (profile_planets.length > 3 && profile_planets[3] !== null) {
-				// Do not adjust user-entered system spread
-			} else if ((system.orbit_spread_max / system.orbit_spread) > (system.n_planets + system.n_empty)) {
-				const spread_half = system.orbit_spread_max / 2;
-				const spread_mod = 0.1 * spread_half * this.roll(2, 6, -7, 'System Spread: Additional Amount (default was too small)');
-				log('System Spread of ' + system.orbit_spread + ' is far smaller than Max of ' + system.orbit_spread_max + '; increasing by +' + (spread_half + spread_mod));
-				system.orbit_spread = round(system.orbit_spread + spread_half + spread_mod, 3);
-			}
 			this.flushHistory(system);
 			system.star_groups.forEach(group => {
 				if (group.n_bodies > 0 && !group.isPrimaryComponent()) {
@@ -3576,12 +3788,41 @@ class StarSystemFactory extends AbstractFactory
 				}
 			});
 			
+			// Continuation Method: Main worlds with atmosphere 4-9 need to be placed inside an HZCO
+			if (world_profile && world_profile.atmosphere > 3 && world_profile.atmosphere < 10) {
+				const group = this.determineMainWorldStarGroup(system, world_profile);
+				if (group) {
+					const baseline_new = round(this.determineMainWorldBaselineOrbit(group, world_profile), 3);
+					world_profile.star_group = group;
+					if (group.isPrimaryComponent()) {
+						system.baseline_orbit = baseline_new;
+						system.orbit_spread = round(this.determineSystemSpread(system, group), 3);
+					} else {
+						group.baseline_orbit = baseline_new;
+						group.orbit_spread = round(this.determineSecondarySpread(group.baseline_number, group.baseline_orbit, group), 3);
+					}
+					log('Continuation Method, Step 3D: Successfully determined main world Baseline Orbit# ' + baseline_new + ' around ' + group.getDesignation(system.n_stellar));
+				} else {
+					log('Continuation Method, Step 3D: Failed to determine main world Baseline Orbit# - no suitable HZCO found');
+				}
+			}
+			
+			// Add a bit more variability when the minimum orbit_spread is significantly less than the potential maximum
+			if (profile_planets.length > 3 && profile_planets[3] !== null) {
+				// Do not adjust user-entered system spread
+			} else if ((system.orbit_spread_max / system.orbit_spread) > (system.n_planets + system.n_empty)) {
+				const spread_half = system.orbit_spread_max / 2;
+				const spread_mod = 0.1 * spread_half * this.roll(2, 6, -7, 'System Spread: Additional Amount (default was too small)');
+				log('System Spread of ' + system.orbit_spread + ' is far smaller than Max of ' + system.orbit_spread_max + '; increasing by +' + (spread_half + spread_mod));
+				system.orbit_spread = round(system.orbit_spread + spread_half + spread_mod, 3);
+			}
+			
 			// Step 6: Placing Orbit#s
 			// Primary star(s) first
 			const p_groups = system.star_groups.filter(group => group.isPrimaryComponent());
 			const spread = system.getMinimumOrbitSpread();
 			if (p_groups[0].n_bodies > 0) {
-				this.determineOrbitNumbers(p_groups[0], spread, p_groups);
+				this.determineOrbitNumbers(p_groups[0], spread, p_groups, world_profile);
 				this.recalculatePrimaryBodyCounts(p_groups[0], p_groups);
 			}
 			// Then any secondary and/or companion star with independent orbits
@@ -3589,7 +3830,7 @@ class StarSystemFactory extends AbstractFactory
 				if (!group.isPrimaryComponent() && group.n_bodies > 0) {
 					// Use the group's individual spread value if available (i.e. > 0)
 					const group_spread = (this.per_star_baseline ? group.getMinimumOrbitSpread() : 0);
-					this.determineOrbitNumbers(group, (group_spread > 0 ? group_spread : spread));
+					this.determineOrbitNumbers(group, (group_spread > 0 ? group_spread : spread), [], world_profile);
 				}
 			});
 			
@@ -3597,7 +3838,7 @@ class StarSystemFactory extends AbstractFactory
 			// TODO
 			
 			// Step 8: Placing Worlds
-			this.placeWorlds(system);
+			this.placeWorlds(system, world_profile);
 			
 			// Step 9: Determine Planetary Physical and Orbital Characteristics
 			system.star_groups.forEach(group => {
@@ -3919,15 +4160,18 @@ class StarSystemFactory extends AbstractFactory
 	/**
 	 * @param StarSystem system A newly created star system with all of the star-data already determined
 	 * @param array planets See StarSystemFactory::generate, #planet_profiles
+	 * @param WorldProfile|null world_profile Optional main world profile
 	 *
 	 * @return StarSystem with the number of each type of world determined
 	 */
-	genWorldCounts(system, planets = [])
+	genWorldCounts(system, planets = [], world_profile = null)
 	{
+		// Special Case: A Main World that is a Planetoid Belt adds 1 to the belt count
+		const bonus_belt = (world_profile && world_profile.type === PLANET_BELT ? 1 : 0);
 		const primary = system.getPrimaryStar();
 		const n_planets = planets.reduce((n, value, index) => n + (index < 3 && value !== null ? value : 0));
 		// Special Case: Dead star systems (i.e. those with a post-stellar primary) may not have any planets at all
-		if (n_planets < 1 && primary.isPostStellar()) {
+		if (n_planets + bonus_belt < 1 && primary.isPostStellar()) {
 			let dm = 0;
 			// DM-2 if multiple post-stellar objects
 			dm -= (system.stars.reduce((n, star) => n + (star.isPostStellar() ? 1 : 0), 0) > 1 ? 2 : 0);
@@ -3943,7 +4187,15 @@ class StarSystemFactory extends AbstractFactory
 			}
 		}
 		system.n_planet_gas = (planets.length > 0 && planets[0] !== null ? planets[0] : this.genGasGiantCount(system));
+		if (system.n_planet_gas < 1 && world_profile && world_profile.host === PLANET_GAS) {
+			system.n_planet_gas = 1;
+			log('Continuation Method: Main World requires at least 1 Gas Giant');
+		}
 		system.n_planet_belt = (planets.length > 1 && planets[1] !== null ? planets[1] : this.getPlanetoidBeltCount(system));
+		if (bonus_belt > 0) {
+			system.n_planet_belt += bonus_belt;
+			log('Continuation Method: Main World requires an additional Planetoid Belt');
+		}
 		system.n_planet_rock = (planets.length > 2 && planets[2] !== null ? planets[2] : this.genTerrestrialPlanetCount(system));
 		system.n_planets = system.n_planet_gas + system.n_planet_belt + system.n_planet_rock;
 		return system;
@@ -4250,9 +4502,11 @@ class StarSystemFactory extends AbstractFactory
 	/**
 	 * @return bool True if all of the star's bodies were allocated a valid Orbit#
 	 */
-	determineOrbitNumbers(star, spread, p_groups = [])
+	determineOrbitNumbers(star, spread, p_groups = [], world_profile = null)
 	{
 		const n_bodies = star.n_bodies + star.n_empty;
+		const main_max = (world_profile && world_profile.star_group ? world_profile.star_group.getHzcoPlus(world_profile.hzco_delta + (spread / 2)) : 0);
+		const main_min = (world_profile && world_profile.star_group ? world_profile.star_group.getHzcoPlus(world_profile.hzco_delta - (spread / 2)) : 0);
 		let allocated = 0;
 		let orbit = star.getMinimumAllowableOrbit();
 		let p_index = 1;
@@ -4263,9 +4517,14 @@ class StarSystemFactory extends AbstractFactory
 			orbit = mao + spread + orbit_var;
 			// Special Case: Primary Star group(s) move to next furthest primary star group if orbit is outside of the current group's maximum allowable orbit
 			while (p_index < p_groups.length && orbit > star.getMaximumAllowableOrbit()) {
-				log('Placing Orbits for ' + star.getDesignation() + ': Orbit# ' + orbit + ' exceeds maximum allowed by ' + star.getDesignation() + '; proceeding to next group, if any');
+				log('Placing Orbits for ' + star.getDesignation() + ': Orbit# ' + orbit.toFixed(3) + ' exceeds maximum allowed by ' + star.getDesignation() + '; proceeding to next group, if any');
 				star = p_groups[p_index++];
 				orbit = star.getMinimumAllowableOrbit() + spread + orbit_var;
+			}
+			// Continuation Method: If final orbit slot is reached without placing Main World, place it in the final slot using its predetermined Orbit#
+			if (world_profile && world_profile.star_group === star && world_profile.orbit_index < 0 && orbit < main_min && n + 1 === n_bodies) {
+				log('Continuation Method: Placing the final body for ' + star.getDesignation() + '; Orbit# ' + orbit.toFixed(3) + ' is still lower than Main World Orbit# ' + world_profile.star_group.getHzcoPlus(world_profile.hzco_delta) + '; using the latter as the final Orbit#');
+				orbit = world_profile.star_group.getHzcoPlus(world_profile.hzco_delta);
 			}
 			// If orbit exceeds max allowed on the final orbit, make an attempt to get it back within acceptable bounds
 			const star_max = star.getMaximumAllowableOrbit();
@@ -4278,8 +4537,51 @@ class StarSystemFactory extends AbstractFactory
 			}
 			if (orbit > star_max) {
 				log('Placing Orbits for ' + star.getDesignation() + ': ran out of allowable orbit slots at n=' + n + ' and Orbit# ' + orbit);
+				// Continuation Method: Ensure Main World with predetermined orbit was allocated an Orbit# around its star if it missed earlier
+				if (world_profile && world_profile.star_group === star && world_profile.orbit_index < 0) {
+					world_profile.star_group = star;
+					world_profile.orbit_index = star.bodies.length - 1;
+					log('Continuation Method: Failed to place Main World Orbit for ' + star.getDesignation() + ' before exceeding Max Orbit#; placing at Orbit# ' + star.bodies[star.bodies.length - 1].toFixed(3) + ' in final Slot #' + world_profile.orbit_index);
+				}
 			} else {
-				log('Valid orbit for ' + star.getDesignation() + ' at ' + orbit + ' (Min: ' + mao + ', Spread: ' + spread + ', Variance: ' + orbit_var + ')');
+				log('Valid orbit for ' + star.getDesignation() + ' at ' + orbit.toFixed(3) + ' (Min: ' + mao.toFixed(3) + ', Spread: ' + spread.toFixed(3) + ', Variance: ' + orbit_var.toFixed(3) + ')');
+				// Continuation Method: Main World with predetermined orbit should be placed in first qualifying slot
+				if (world_profile && world_profile.star_group === star && world_profile.orbit_index < 0) {
+					let flag = (main_min < orbit && orbit < main_max);
+					// If the current Orbit# passes beyond the Main World's maximum orbit, place the world in the last orbit slot using its predetermined Orbit#
+					if (!flag && orbit > main_max) {
+						log('Continuation Method: Orbit# ' + orbit.toFixed(3) + ' has passed beyond Main World maximum ' + main_max.toFixed(3));
+						const last_orbit = (star.bodies.length > 0 ? star.bodies[star.bodies.length - 1] : null);
+						const main_orbit = world_profile.star_group.getHzcoPlus(world_profile.hzco_delta);
+						if (last_orbit === null) {
+							// No prior orbits, use predetermined main Orbit# as is
+							orbit = main_orbit;
+							flag = true;
+							log('Continuation Method: No prior bodies; using the Main World predetermined Orbit# as is');
+						} else if (last_orbit < main_orbit) {
+							// If last orbit is less than the predetermined main Orbit#, use the main as is and adjust the last orbit if it is too close
+							orbit = main_orbit;
+							flag = true;
+							log('Continuation Method: Previous Orbit# ' + last_orbit.toFixed(3) + ' is less than Main World predetermined Orbit#; use the latter as is');
+							if (1.1 * last_orbit > main_orbit) {
+								star.bodies[star.bodies.length - 1] = last_orbit / 1.1;
+								log('Continuation Method: Adjusted too-close prior Orbit# ' + last_orbit.toFixed(3) + ' to ' + star.bodies[star.bodies.length - 1].toFixed(3));
+							}
+						} else {
+							// If last orbit is greater than the predetermined main Orbit#, set the last orbit to the main_orbit and recalculate the current orbit
+							world_profile.star_group = star;
+							world_profile.orbit_index = star.bodies.length - 1;
+							star.bodies[star.bodies.length - 1] = main_orbit;
+							orbit = main_orbit + spread + orbit_var;
+							log('Continuation Method: Previous Orbit# ' + last_orbit.toFixed(3) + ' exceeds Main World predetermined Orbit#; placing Main World and its Orbit# in previous slot and setting current Orbit# to ' + orbit.toFixed(3));
+						}
+					}
+					if (flag) {
+						world_profile.star_group = star;
+						world_profile.orbit_index = star.bodies.length;
+						log('Continuation Method: Successfully placed Main World Orbit for ' + star.getDesignation() + ' at Orbit# ' + orbit.toFixed(3) + ' in Slot #' + world_profile.orbit_index);
+					}
+				}
 				star.bodies.push(orbit);
 				allocated++;
 			}
@@ -4287,6 +4589,36 @@ class StarSystemFactory extends AbstractFactory
 		log('World Orbit#s for ' + star.getDesignation());
 		log(star.bodies);
 		return allocated === n_bodies;
+	}
+
+	determineMainWorldStarGroup(system, world_profile)
+	{
+		world_profile.hzco_delta = world_profile.getHzcoDeviation();
+		log('Continuation Method, Step 3D: Searching for suitable Baseline Orbit# for main world with HZCO Deviation of ' + signed(world_profile.hzco_delta));
+		return system.star_groups.find(group => {
+			if (group.n_bodies > 0 && group.isHzcoValid()) {
+				const main = group.getHzcoPlus(world_profile.hzco_delta);
+				return null !== group.bodies.find(orbit => {
+					const max = getOrbitPlus(orbit, 1);
+					const min = getOrbitPlus(orbit, -1);
+					return (min < main && main < max);
+				});
+			}
+			return false;
+		});
+	}
+	
+	determineMainWorldBaselineOrbit(group, world_profile)
+	{
+		const hzco_star = group.getHzco();
+		const hzco_main = group.getHzcoPlus(world_profile.hzco_delta);
+		if (hzco_star > 1 && hzco_main > 1) {
+			return hzco_main;
+		} else if (world_profile.hzco_delta > 0) {
+			return hzco_star * (1 + world_profile.hzco_delta);
+		} else {
+			return hzco_star / (1 - world_profile.hzco_delta);
+		}
 	}
 
 	recalculatePrimaryBodyCounts(primary, p_groups)
@@ -4317,14 +4649,14 @@ class StarSystemFactory extends AbstractFactory
 		}
 	}
 
-	placeWorlds(system)
+	placeWorlds(system, world_profile = null)
 	{
 		// Special Case: Young Protostar systems (i.e. < 0.002 Gyr old) have special rules for world generation
 		const primary = system.getPrimaryStar();
 		const is_young_protostar = (primary.type === PROTOSTAR && system.age < 0.002);
 		const proto_cap = (primary.type === PROTOSTAR ? round(system.age * 1000, 0) : 0);
-		const worlds = this.getWorldsForPlacement(system);
-		this.determineWorldTypes(system, worlds);
+		const worlds = this.getWorldsForPlacement(system, world_profile);
+		this.determineWorldTypes(system, worlds, world_profile);
 		this.flushHistory(system);
 		// Clear the temporary data out of the bodies array for each star and group
 		system.star_groups.forEach(group => group.bodies = []);
@@ -4342,9 +4674,15 @@ class StarSystemFactory extends AbstractFactory
 				// no-op
 			} else if (entry['type'] === PLANET_BELT) {
 				const belt = new PlanetoidBelt(host, entry['orbit'], b_index++);
+				if (entry['main']) {
+					belt.world_profile = world_profile;
+				}
 				host.bodies.push(belt);
 			} else {
 				const world = new World(host, entry['orbit'], p_index++, entry['type']);
+				if (entry['main']) {
+					world.world_profile = world_profile;
+				}
 				world.size = this.world_factory.genSize(system, world);
 				// Special Case: Protostar systems cap the size of terrestrial planets and moons at 1 per million years
 				let proto_adds = [];
@@ -4381,14 +4719,29 @@ class StarSystemFactory extends AbstractFactory
 		});
 	}
 
-	getWorldsForPlacement(system)
+	getWorldsForPlacement(system, world_profile = null)
 	{
 		let worlds = [];
 		for (let i = 0; i < system.star_groups.length; i++) {
 			const group = system.star_groups[i];
 			const n_bodies = group.n_bodies + group.n_empty;
 			for (let j = 0; j < n_bodies; j++) {
-				worlds.push({'group_index': i, 'orbit': group.bodies[j], 'type': null});
+				worlds.push({'group_index': i, 'orbit': group.bodies[j], 'type': null, 'main': false});
+			}
+			// Continuation Method: Place Main World with predetermined orbit
+			if (world_profile && world_profile.star_group === group) {
+				const main_index = world_profile.orbit_index + worlds.length - n_bodies;
+				const type = world_profile.getMainPlanetType(system);
+				worlds[main_index]['type'] = type;
+				worlds[main_index]['main'] = true;
+				log('Continuation Method: Main World placed at predetermined world index ' + main_index + ' with initial world type of ' + (new World(null, 0, 1, type)).getTypeName());
+				// Set the appropriate count when a Gas Giant or Belt is placed so star does not generate an extra one
+				if (type === PLANET_GAS) {
+					world_profile.n_planet_gas = 1;
+				}
+				if (type === PLANET_BELT) {
+					world_profile.n_planet_belt = 1;
+				}
 			}
 			// If empty orbits are per-star rather than system-wide, allocate them now
 			if (this.per_star_empty_orbits) {
@@ -4405,12 +4758,14 @@ class StarSystemFactory extends AbstractFactory
 		return worlds;
 	}
 
-	determineWorldTypes(system, worlds)
+	determineWorldTypes(system, worlds, world_profile = null)
 	{
+		// Continuation Method: Main World without predetermined orbit can be placed anywhere
+		const main_type = (world_profile && world_profile.star_group === null ? world_profile.getMainPlanetType(system) : null);
 		const map = {
 			[PLANET_EMPTY]: (this.per_star_empty_orbits ? 0 : system.n_empty),
-			[PLANET_GAS]: system.n_planet_gas,
-			[PLANET_BELT]: system.n_planet_belt,
+			[PLANET_GAS]: system.n_planet_gas - (world_profile ? world_profile.n_planet_gas : 0),
+			[PLANET_BELT]: system.n_planet_belt - (world_profile ? world_profile.n_planet_belt : 0),
 			// Terrestrial planets fill all remaining slots once the others are allocated
 		};
 		for (const type in map) {
@@ -4423,12 +4778,32 @@ class StarSystemFactory extends AbstractFactory
 					if (i === worlds.length) i = 0;
 				}
 				worlds[i]['type'] = +type;
+				if (main_type === +type && world_profile.orbit_index < 0) {
+					worlds[i]['main'] = true;
+					world_profile.orbit_index = i;
+					log('Continuation Method: Main World placed at random world index ' + i + ' with initial world type of ' + (new World(null, 0, 1, +type)).getTypeName());
+				}
 			}
 		}
 		// Fill the remaining slots with Terrestrial planets
 		for (let j = 0; j < worlds.length; j++) {
 			if (worlds[j]['type'] === null) {
 				worlds[j]['type'] = PLANET_ROCK;
+			}
+		}
+		// Continuation Method: Choose a random Terrestrial as the Main World if not yet determined
+		if (world_profile && world_profile.orbit_index < 0) {
+			let index = this.roll(1, worlds.length, -1, 'Continuation Method: Random Terrestrial for Main World');
+			for (let x = index; x < worlds.length && world_profile.orbit_index < 0; x++) {
+				if (worlds[x]['type'] === PLANET_ROCK) {
+					worlds[x]['main'] = true;
+					world_profile.orbit_index = x;
+					log('Continuation Method: Main World placed at random Terrestrial world index ' + x);
+				}
+				// Wrap back around to beginning if none yet found
+				if (x + 1 === worlds.length) {
+					x = -1;
+				}
 			}
 		}
 	}
@@ -4565,6 +4940,10 @@ class WorldFactory extends AbstractFactory
 
 	genSize(system, world)
 	{
+		// Continuation Method: Use predetermined value as is, if applicable
+		if (world.world_profile && world.world_profile.isApplicable(world)) {
+			return world.world_profile.size;
+		}
 		if (world.type === PLANET_GAS) {
 			return this.genSizeGasGiant(system);
 		} else if (world.type === PLANET_ROCK) {
@@ -4630,27 +5009,11 @@ class WorldFactory extends AbstractFactory
 	 */
 	genTemperature(world)
 	{
-		const dm_atmo = this.getTemperatureModAtmosphere(world.atmosphere);
+		const dm_atmo = world.atmosphere.getTemperatureMod();
 		const dm_hzco = this.getTemperatureModHzco(world);
 		return !this.enable_flat_temp || world.isInHzco()
 			? this.roll(2, 6, dm_atmo + dm_hzco, 'Mean Temperature')
 			: (7 + dm_atmo + dm_hzco);
-	}
-
-	getTemperatureModAtmosphere(atmosphere)
-	{
-		let dm = 0;
-		// DM-2 for atmosphere codes 2 or 3
-		if (atmosphere.type === 2 || atmosphere.type === 3) dm -= 2;
-		// DM-1 for atmosphere codes 4, 5, or E
-		if (atmosphere.type === 4 || atmosphere.type === 5 || atmosphere.type === 14) dm--;
-		// DM+1 for atmosphere codes 8 or 9
-		if (atmosphere.type === 8 || atmosphere.type === 9) dm++;
-		// DM+2 for atmosphere codes A, D, or F
-		if (atmosphere.type === 10 || atmosphere.type === 13 || atmosphere.type === 15) dm += 2;
-		// DM+6 for atmosphere codes B or C
-		if (atmosphere.type === 11 || atmosphere.type === 12) dm += 6;
-		return dm;
 	}
 
 	getTemperatureModHzco(world)
@@ -4693,6 +5056,8 @@ class WorldFactory extends AbstractFactory
 		} else if (world.type === PLANET_RING) {
 			this.genTraitsPlanetaryRing(system, world);
 		}
+		// Continuation Method: Assign Starport and PGL-T for the Main World, if applicable
+		world.applyMainWorldProfile();
 	}
 
 	genTraitsGasGiant(system, world)
@@ -4920,6 +5285,10 @@ class WorldFactory extends AbstractFactory
 
 	genHydrographicsCode(world, greenhouse = false)
 	{
+		// Continuation Method: Use predetermined value as is, if applicable
+		if (world.world_profile && world.world_profile.isApplicable(world)) {
+			return world.world_profile.hydrographics;
+		}
 		// Special Case: Size 1 and smaller worlds have a Hydrographics code of 0
 		if (world.size < 2) return 0;
 		let dm = world.atmosphere.type;
@@ -5111,7 +5480,7 @@ class WorldFactory extends AbstractFactory
 		return world.density * Math.pow(world.getTotalDiameter() / TERRA_DIAMETER, 3);
 	}
 
-	genMoon(system, world, size, type)
+	genMoon(system, world, size, type, is_main = false)
 	{
 		// Special Case: Planetary Rings are generally inside the Roche Limit (i.e. 1.5 PD) and so placed in band 0
 		const band = (type === PLANET_RING ? 0 : this.genMoonOrbitBand(world));
@@ -5119,7 +5488,14 @@ class WorldFactory extends AbstractFactory
 		const moon = this.getMoonInstance(world, orbit, type);
 		moon.orbit_band = band;
 		moon.orbit_deviation = (this.enable_var_orbit && type !== PLANET_RING ? 0.1 * this.roll(2, 6, -7, 'Moon Orbit: Variance') : 0);
-		moon.size = size;
+		// Continuation Method: Assign world profile if required; i.e. present, matches the moon type, and main world not yet assigned
+		if (is_main) {
+			moon.world_profile = world.world_profile;
+			moon.size = moon.world_profile.size;
+			log('Continuation Method: Generating Main World as satellite object (' + moon.getTypeName() + ') around ' + world.getDesignation(system.n_stellar));
+		} else {
+			moon.size = size;
+		}
 		this.genTraits(system, moon);
 		// Determine Orbital Period, in hours; distance is in PD, and world size for gas giants is 8 per size category (i.e. S = 8, M = 16, L = 24)
 		const world_size = (world.type === PLANET_GAS ? (world.size + 1) * 8 : world.size);
@@ -5141,21 +5517,28 @@ class WorldFactory extends AbstractFactory
 
 	genSignificantMoons(system, world)
 	{
+		// Continuation Method: Main World may be in orbit around another body
+		const is_main_moon = (world.world_profile && world.world_profile.host !== null);
+		const min = (is_main_moon ? (world.world_profile.type === PLANET_RING ? 0 : 1) : -1);
 		const hill_sphere_moon_limit = world.hill_sphere / 2;
-		const n = this.genSignificantMoonQty(system, world);
+		if (min > -1 && hill_sphere_moon_limit < (min > 0 ? 1.5 : 0.55)) {
+			log('Continuation Method: Failed to choose good candidate for satellite Main World - insufficient Hill Sphere');
+		}
+		const n = Math.max(min, this.genSignificantMoonQty(system, world));
 		if (n < 0) {
 			// No significant moons
 		} else if (hill_sphere_moon_limit < 0.55) {
 			// No moons or planetary rings can exist due to the extremely low Hill Sphere
 		} else if (n < 1) {
 			// Planetary ring, i.e. a Size 0 moon
-			world.bodies.push(this.genMoon(system, world, 0, PLANET_RING));
+			world.bodies.push(this.genMoon(system, world, 0, PLANET_RING, is_main_moon));
 		} else if (hill_sphere_moon_limit < 1.5) {
 			// Hill Sphere Moon Limit is below the Roche Limit; convert first moon to a planetary ring and ignore the remainder
 			log('Hill Sphere Moon Limit for ' + world.getDesignation(system.n_stellar) + ' is too low for moons; converting first to a Planetary Ring and ignoring the remaining ' + (n - 1));
-			world.bodies.push(this.genMoon(system, world, 0, PLANET_RING));
+			world.bodies.push(this.genMoon(system, world, 0, PLANET_RING, is_main_moon));
 		} else {
 			// Generate n moons
+			let has_main = !is_main_moon;
 			for (let i = 0; i < n; i++) {
 				let type = PLANET_MOON;
 				let size = this.genMoonSize(world);
@@ -5181,7 +5564,20 @@ class WorldFactory extends AbstractFactory
 					// Special Case: If the parent Gas Giant is Large, roll another 2D; on a 12, the moon is a Size M gas giant
 					if (world.size > 1 && 12 === this.roll(2, 6, 0, 'Moon Size: Large Gas Giant')) size = 1;
 				}
-				world.bodies.push(this.genMoon(system, world, size, type));
+				// Continuation Method: Determine if the current satellite should be the Main World
+				let is_main = false;
+				if (!has_main) {
+					is_main = (world.world_profile.type === type || (world.world_profile.type === PLANET_MOON && type === PLANET_ROCK));
+					// Ensure at least one eligible satellite is generated
+					if (!is_main && i + 1 === n) {
+						log('Continuation Method: Failed to generate eligible body for satellite Main World; changing final Size ' + size + ' body to Size ' + world.world_profile.size + ' and suitable Type');
+						size = world.world_profile.size;
+						type = world.world_profile.type;
+						is_main = true;
+					}
+					has_main = is_main;
+				}
+				world.bodies.push(this.genMoon(system, world, size, type, is_main));
 			}
 			// Reorder and re-index moons based on their actual orbit#s
 			world.bodies.sort((a, b) => a.getTotalOrbit() - b.getTotalOrbit());
@@ -5331,6 +5727,10 @@ class AtmosphereFactory extends AbstractFactory
 
 	genType(world)
 	{
+		// Continuation Method: Use predetermined value as is, if applicable
+		if (world.world_profile && world.world_profile.isApplicable(world)) {
+			return new Atmosphere(world.world_profile.atmosphere);
+		}
 		// Special Case: Worlds of Size 1 or less have no significant atmosphere
 		if (world.size < 2) return new Atmosphere(0);
 		const dm = this.getTypeMod(world);
@@ -5976,6 +6376,25 @@ function convertToRoman(number)
 }
 
 /**
+ * Converts an eHex code to its corresponding integer value
+ */
+function fromHexCode(hex)
+{
+	if (hex.length !== 1) throw new SyntaxError('eHex codes must be exactly 1 character long: ' + hex);
+	const code = hex.toUpperCase().codePointAt(0);
+	// Digits 0-9
+	if (code > 47 && code < 58) return code - 48;
+	// Invalid Characters: I, O, any non-uppercase, any non-alphabet
+	if (code < 65 || code > 90 || code === 73 || code === 79) throw new SyntaxError('Invalid eHex code: ' + hex);
+	// Letters from A-H are 10-17
+	if (code < 73) return code - 55;
+	// Letters from J-N are 18-22
+	if (code < 79) return code - 56;
+	// Letters from P-Z are 23-33
+	return code - 57;
+}
+
+/**
  * Converts an integer of 33 or less to the corresponding hex code used by e.g. UWP
  */
 function toHexCode(number)
@@ -6012,8 +6431,12 @@ function getStarSystem(data)
 	const system_factory = new StarSystemFactory(star_factory, world_factory, data);
 	const star_profiles = (data.has('system_profile') ? data.get('system_profile').split(':').filter(s => s.length > 0) : []);
 	const planetary_profile = (data.has('cont_spp') ? data.getAll('cont_spp').map((s) => s.trim()).map((s) => s.length > 0 ? Number(s) : null) : Array(5).fill(null));
+	const main_uwp = data.get('cont_uwp');
+	const main_temp = +data.get('cont_temp');
+	const main_host = (data.has('cont_host') ? +data.get('cont_host') : null);
+	const world_profile = (main_uwp.length > 0 ? new WorldProfile(main_uwp, main_temp, main_host) : null);
 	hzco_fudge = (data.has('hzco_fudge') ? +data.get('hzco_fudge') : 0);
-	return system_factory.generate(star_profiles, planetary_profile);
+	return system_factory.generate(star_profiles, planetary_profile, world_profile);
 }
 
 function displayStarSystem(system, data)
