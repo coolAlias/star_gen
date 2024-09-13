@@ -4248,7 +4248,7 @@ class StarSystemFactory extends AbstractFactory
 			const orbit_var = 0.1 * spread * this.roll(2, 6, -7, 'Placing Orbits for ' + star.getDesignation() + ': Variance');
 			orbit = mao + spread + orbit_var;
 			// Special Case: Primary Star group(s) move to next furthest primary star group if orbit is outside of the current group's maximum allowable orbit
-			while (orbit > star.getMaximumAllowableOrbit() && p_index < p_groups.length) {
+			while (p_index < p_groups.length && orbit > star.getMaximumAllowableOrbit()) {
 				log('Placing Orbits for ' + star.getDesignation() + ': Orbit# ' + orbit + ' exceeds maximum allowed by ' + star.getDesignation() + '; proceeding to next group, if any');
 				star = p_groups[p_index++];
 				orbit = star.getMinimumAllowableOrbit() + spread + orbit_var;
