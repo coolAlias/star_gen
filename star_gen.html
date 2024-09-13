@@ -214,6 +214,9 @@
 						</label>
 					</div>
 					<div class="input_container">
+						<label for="hzco_fudge"><input id="hzco_fudge" class="center" name="hzco_fudge" type="number" min="0" max="1" value="0.5" step="0.001" /> HZCO Fudge</label>
+					</div>
+					<div class="input_container">
 						<label for="cumulative_orbit"><input id="cumulative_orbit" name="cumulative_orbit" type="checkbox" checked /> Planets: Cumulative Orbital Variance</label>
 					</div>
 					<div class="input_container">
@@ -1550,8 +1553,10 @@ class AbstractStar extends OrbitingBody
 
 	isHzcoValid()
 	{
-		const hzco = this.getHzco();
-		return hzco > this.getMinimumAllowableOrbit() && hzco < this.getMaximumAllowableOrbit();
+		const fudge = getHzcoFudgeFactor();
+		const max = this.getMaximumAllowableOrbit();
+		const min = this.getMinimumAllowableOrbit();
+		return max > min && this.getHzcoPlus(fudge) > min && this.getHzcoPlus(-fudge) < max;
 	}
 
 	/**
@@ -1794,7 +1799,10 @@ class StarGroup extends AbstractStar
 	isHzcoValid()
 	{
 		// StarGroup's min and max allowed orbits already account for the star's exclusion zone etc.
-		return this.hzco > this.allowed_orbits_min && this.hzco < this.allowed_orbits_max;
+		const fudge = getHzcoFudgeFactor();
+		return this.allowed_orbits_max > this.allowed_orbits_min
+			&& this.getHzcoPlus(fudge) > this.allowed_orbits_min
+			&& this.getHzcoPlus(-fudge) < this.allowed_orbits_max;
 	}
 
 	/**
@@ -5906,6 +5914,17 @@ function calculateHabitableCenterZone(luminosity)
 }
 
 /**
+ * The HZ extends +/- 1.0 Orbit# around the HZCO, so some portion of it may be accessible even at the edges of the star's allowed Orbit#s
+ *
+ * @return float The amount of leeway to allow when determining if #isHzcoValid is true
+ */
+var hzco_fudge = 0;
+function getHzcoFudgeFactor()
+{
+	return hzco_fudge;
+}
+
+/**
  * @return string Converts a Roman Numeral to its positive integer equivalent
  * @throws SyntaxError if improperly formatted
  */
@@ -5984,6 +6003,7 @@ function getStarSystem(data)
 	const system_factory = new StarSystemFactory(star_factory, world_factory, data);
 	const star_profiles = (data.has('system_profile') ? data.get('system_profile').split(':').filter(s => s.length > 0) : []);
 	const planetary_profile = (data.has('cont_spp') ? data.getAll('cont_spp').map((s) => s.trim()).map((s) => s.length > 0 ? Number(s) : null) : Array(5).fill(null));
+	hzco_fudge = (data.has('hzco_fudge') ? +data.get('hzco_fudge') : 0);
 	return system_factory.generate(star_profiles, planetary_profile);
 }
 

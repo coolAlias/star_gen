@@ -54,6 +54,8 @@ The application can run in any modern browser (e.g. Firefox), no internet or loc
 
 - Change to Class V: Change the Secondary to Class V
 
+**HZCO Fudge** Amount of leeway, in Orbit#s from 0.00 to 1.00, when determining if an HZCO is considered to be valid, i.e. within the Min and Max Allowed Orbit#s of a star.
+
 **Planets: Cumulative Orbital Variance** If checked, each planetary orbit will be calculated from the previous orbit, rather than from a fixed value of one spread per planet.
 
 **Planets: Per-Star Baseline Numbers** Determine the Baseline Number, Baseline Orbit#, and Spread for each star separately; the primary star groups (i.e. A, AB, ABC, and ABCD) always use the system-wide values.
