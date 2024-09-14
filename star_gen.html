@@ -4915,7 +4915,7 @@ class WorldFactory extends AbstractFactory
 		world.hydrographics_percentage = this.genHydrographicsPercentage(world);
 		world.habitability = clamp(this.genHabitabilityRating(world), 0, 12);
 		world.albedo = this.genAlbedo(world);
-		world.temperature_mean = this.genTemperatureMeanEstimate(world)
+		world.temperature_mean = this.genTemperatureMeanEstimate(world);
 	}
 
 	genHydrographicsCode(world, greenhouse = false)
