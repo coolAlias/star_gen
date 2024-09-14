@@ -245,7 +245,7 @@
 						<label for="hzco_fudge"><input id="hzco_fudge" class="center" name="hzco_fudge" type="number" min="0" max="1" value="0.5" step="0.001" /> HZCO Fudge</label>
 					</div>
 					<div class="input_container">
-						<label for="main_tier"><input id="main_tier" class="center" name="main_tier" type="number" min="0" max="1" value="0.85" step="0.001" /> Main World Candidate Threshold</label>
+						<label for="main_tier"><input id="main_tier" class="center" name="main_tier" type="number" min="0" max="1" value="0.8" step="0.001" /> Main World Candidate Threshold</label>
 					</div>
 					<div class="input_container">
 						<label for="cumulative_orbit"><input id="cumulative_orbit" name="cumulative_orbit" type="checkbox" checked /> Planets: Cumulative Orbital Variance</label>
@@ -6957,7 +6957,11 @@ window.addEventListener("load", function(event)
 			err_div.innerHTML = err.message;
 		}
 		if (output instanceof StarSystem) {
-			const main_fn = (world) => Math.max(1, world.habitability + world.sophont_presence) * (world.hydrographics + world.resource_rating);
+			const main_fn = (world) => {
+				const refuel = (world.hydrographics < 1 ? -1 : (world.hydrographics > 9 ? 0 : 1));
+				const factor = 1 + 0.2 * (refuel + world.sophont_presence);
+				return round(factor * (world.habitability + world.resource_rating), 0);
+			};
 			const main_min = (data.has('main_tier') ? +data.get('main_tier') : 0.85);
 			const flagger = new MainWorldFlagger(main_fn, main_min);
 			flagger.apply(output.star_groups);
