@@ -2797,10 +2797,10 @@ class MainWorldFlagger
 
 	flag(world)
 	{
-		world.main_candidate = world.main_world_rating > this.cutoff;
+		world.main_candidate = world.main_world_rating > this.cutoff || (world.world_profile && world.world_profile.isApplicable(world));
 		this.addCandidate(world);
 		world.bodies.forEach(body => {
-			body.main_candidate = body.main_world_rating > this.cutoff;
+			body.main_candidate = body.main_world_rating > this.cutoff || (body.world_profile && body.world_profile.isApplicable(body));
 			this.addCandidate(body);
 		});
 	}
