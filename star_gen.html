@@ -2489,6 +2489,7 @@ class WorldProfile
 
 	parseProfile(uwp)
 	{
+		uwp = this.clean(uwp);
 		if (uwp.length === 7 || uwp.length === 9) {
 			// Starport values range from 10-14 (A-E) and use 31 (X) to designate none instead of 0
 			this.starport = this.parseValue(uwp[0], 10, 14, 'Starport', [31]);
@@ -2550,6 +2551,14 @@ class WorldProfile
 		if (v < min && !extra.includes(v)) throw new SyntaxError('Minimum value for ' + field + ' is ' + min);
 		if (v > max && !extra.includes(v)) throw new SyntaxError('Maximum value for ' + field + ' is ' + max);
 		return v;
+	}
+
+	/**
+	 * Sanitizes the UWP input string and returns it in the expected format, e.g. in all Upper Case
+	 */
+	clean(uwp)
+	{
+		return uwp.replace(/\s/g, '').toUpperCase();
 	}
 }
 
