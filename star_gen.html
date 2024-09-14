@@ -372,6 +372,7 @@
 						<th>Diameter</th>
 						<th>Density</th>
 						<th>Gravity</th>
+						<th>Esc V<br>(km/s)</th>
 						<th>Temp (C)</th>
 						<th>Orbit#*</th>
 						<th>AU</th>
@@ -389,6 +390,7 @@
 			</table>
 			<template id="planet_tbl_template">
 				<tr>
+					<td></td>
 					<td></td>
 					<td></td>
 					<td></td>
@@ -2220,6 +2222,18 @@ class World extends OrbitingBody
 			+ '-' + round(this.density, 3)
 			+ '-' + round(this.gravity, 3)
 			+ '-' + round(this.getTotalMass(), 3);
+	}
+
+	/**
+	 * @return float Escape Velocity in km/s
+	 */
+	getEscapeVelocity()
+	{
+		const d = this.getTotalDiameter();
+		if (d < Number.EPSILON) return 0;
+		const num = this.getTotalMass(); // Mass is already in units of Terra
+		const den = (this.type === PLANET_GAS ? d : d / TERRA_DIAMETER);
+		return Math.sqrt(num / den) * 11186 / 1000;
 	}
 
 	getTemperatureName()
@@ -6846,6 +6860,7 @@ function addPlanetTableRow(entry, body, template, n_stellar = 1, is_moon = false
 	const clone = template.content.cloneNode(true);
 	const row = clone.querySelector('tr');
 	const diameter = entry.getTotalDiameter();
+	const escape = entry.getEscapeVelocity();
 	const mass = entry.getTotalMass();
 	let j = 0;
 	row.children[j++].innerHTML = entry.getHostStar().getDesignation(n_stellar);
@@ -6854,6 +6869,7 @@ function addPlanetTableRow(entry, body, template, n_stellar = 1, is_moon = false
 	row.children[j++].innerHTML = (diameter > 0 ? round(diameter, 3) + (entry.type === PLANET_GAS ? '&CirclePlus;' : 'km') : '-');
 	row.children[j++].innerHTML = (entry.density > 0 ? round(entry.density, 3) : '-');
 	row.children[j++].innerHTML = (entry.gravity > 0 ? round(entry.gravity, 3) : '-');
+	row.children[j++].innerHTML = (escape > 0 ? round(escape, 3) : '-');
 	row.children[j++].innerHTML = (entry.temperature_mean < 0 ? '-' : (entry.temperature_mean - 273).toFixed(1));
 	row.children[j++].innerHTML = entry.getTotalOrbit().toFixed(2) + (entry.orbit_retrograde ? 'R' : '');
 	row.children[j++].innerHTML = (is_moon ? 'PD' : format(entry.orbit_au, 3));
