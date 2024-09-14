@@ -4267,8 +4267,17 @@ class StarSystemFactory extends AbstractFactory
 				star = p_groups[p_index++];
 				orbit = star.getMinimumAllowableOrbit() + spread + orbit_var;
 			}
-			if (orbit > star.getMaximumAllowableOrbit()) {
-				log('Placing Orbits for ' + star.getDesignation() + ': ran out of allowable orbit slots at n=' + n);
+			// If orbit exceeds max allowed on the final orbit, make an attempt to get it back within acceptable bounds
+			const star_max = star.getMaximumAllowableOrbit();
+			if (orbit > star_max && n + 1 === n_bodies) {
+				log('Final Orbit# ' + orbit.toFixed(3) + ' around ' + star.getDesignation() + ' out of bounds; attempting to lower it to below Max Orbit# ' + star_max.toFixed(3));
+				orbit = star_max - Math.abs(orbit_var);
+				if (orbit <= star_max && orbit > (mao + spread / 2)) {
+					log('Success! Orbit# changed to ' + orbit.toFixed(3));
+				}
+			}
+			if (orbit > star_max) {
+				log('Placing Orbits for ' + star.getDesignation() + ': ran out of allowable orbit slots at n=' + n + ' and Orbit# ' + orbit);
 			} else {
 				log('Valid orbit for ' + star.getDesignation() + ' at ' + orbit + ' (Min: ' + mao + ', Spread: ' + spread + ', Variance: ' + orbit_var + ')');
 				star.bodies.push(orbit);
