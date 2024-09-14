@@ -23,6 +23,9 @@
 			tbody tr:nth-child(2n) {
 				background-color: #E8E8E8;
 			}
+			tr.candidate {
+				background-color: #98FB98 !important;
+			}
 			label {
 				display: block;
 				font-weight: bold;
@@ -242,6 +245,9 @@
 						<label for="hzco_fudge"><input id="hzco_fudge" class="center" name="hzco_fudge" type="number" min="0" max="1" value="0.5" step="0.001" /> HZCO Fudge</label>
 					</div>
 					<div class="input_container">
+						<label for="main_tier"><input id="main_tier" class="center" name="main_tier" type="number" min="0" max="1" value="0.85" step="0.001" /> Main World Candidate Threshold</label>
+					</div>
+					<div class="input_container">
 						<label for="cumulative_orbit"><input id="cumulative_orbit" name="cumulative_orbit" type="checkbox" checked /> Planets: Cumulative Orbital Variance</label>
 					</div>
 					<div class="input_container">
@@ -401,6 +407,8 @@
 					<td></td>
 				<tr>
 			</template>
+		</div>
+		<div id="main_world_winners" class="container">
 		</div>
 		<div id="roll_history" class="container">
 		</div>
@@ -2068,6 +2076,8 @@ class World extends OrbitingBody
 		this.hill_sphere = 0;
 		this.moon_orbit_range = 0;
 		this.resource_rating = 0;
+		this.main_world_rating = 0;
+		this.main_candidate = false;
 		// Starport and PGL-T Social Characteristics
 		this.starport = -1;
 		this.population = -1;
@@ -2717,6 +2727,97 @@ class AtmosphereTaint
 		return this.getProfileShort()
 			+ '.' + this.severity
 			+ '.' + this.persistence;
+	}
+}
+
+class Appraiser
+{
+	/**
+	 * @param callback appraiser The function (object) used to assign each object a rating
+	 * @param callback|null responder The function (object, rating), if any, to call after the rating is determined
+	 */
+	constructor(appraiser, responder = null)
+	{
+		this.appraiser = appraiser;
+		this.responder = (responder === null
+			? (object, rating) => rating
+			: responder);
+		this.max = 0;
+		this.min = 0;
+	}
+
+	/**
+	 * Applies the #appraiser function to the object and keeps track of the minimum and maximum scores.
+	 * Calls the #responder function with the object and rating as arguments once complete.
+	 */
+	apply(object)
+	{
+		const rating = this.appraiser(object);
+		this.max = Math.max(rating, this.max);
+		this.min = Math.min(rating, this.min);
+		if (this.responder !== null) {
+			this.responder(object, rating);
+		}
+	}
+}
+
+class MainWorldFlagger
+{
+	/**
+	 * @param callback|null fn_appraiser Function for the Appraiser constructor, or null to use a default main world rating algorithm
+	 * @param float threshold Value from 0 (nearly every planet) to 1 (only the absolute best) indicating how close to the maximum rating a world needs to rate in order to qualify as a main world candidate
+	 */
+	constructor(fn_appraiser = null, threshold = 0.1)
+	{
+		const fn_a = (fn_appraiser === null
+			? (world) => this.defaultAppraisal(world)
+			: fn_appraiser);
+		const fn_r = (world, rating) => world.main_world_rating = rating;
+		this.appraiser = new Appraiser(fn_a, fn_r);
+		this.threshold = clamp(threshold, 0, 1);
+		this.candidates = [];
+		this.cutoff = 0;
+	}
+
+	apply(groups)
+	{
+		groups.forEach(group => group.bodies.forEach(world => this.appraise(world)));
+		const minimum = Math.ceil(this.threshold * this.appraiser.max);
+		this.cutoff = Math.max(0, minimum - 1);
+		groups.forEach(group => group.bodies.forEach(world => this.flag(world)));
+		this.candidates.sort((a, b) => b.main_world_rating - a.main_world_rating);
+		log('Main World Appraiser results: high = ' + this.appraiser.max + ', low = ' + this.appraiser.min + ', threshold = ' + this.threshold + ', cutoff = ' + this.cutoff);
+	}
+
+	appraise(world)
+	{
+		this.appraiser.apply(world);
+		world.bodies.forEach(body => this.appraiser.apply(body));
+	}
+
+	flag(world)
+	{
+		world.main_candidate = world.main_world_rating > this.cutoff;
+		this.addCandidate(world);
+		world.bodies.forEach(body => {
+			body.main_candidate = body.main_world_rating > this.cutoff;
+			this.addCandidate(body);
+		});
+	}
+
+	addCandidate(world)
+	{
+		if (world.main_candidate) {
+			this.candidates.push(world);
+		}
+	}
+
+	defaultAppraisal(world)
+	{
+		return world.habitability
+			+ world.hydrographics
+			+ world.resource_rating
+			+ world.sophont_presence;
 	}
 }
 
@@ -6754,6 +6855,10 @@ function addPlanetTableRow(entry, body, template, n_stellar = 1, is_moon = false
 	row.children[j++].innerHTML = entry.getProfileShort();
 	row.children[j++].innerHTML = (is_moon ? '-' : entry.getSignificantBodyCount());
 	row.children[j++].innerHTML = entry.getProfileNotes();
+	if (entry.main_candidate) {
+		row.classList.add('candidate');
+	}
+	row.title = 'Main World Candidacy Rating: ' + entry.main_world_rating;
 	body.appendChild(row);
 }
 
@@ -6775,6 +6880,26 @@ function buildRollHistoryTable(entry)
 		body.appendChild(row);
 	});
 	return table;
+}
+
+function displayMainWorldResults(flagger, n_stellar = 1)
+{
+	const div = document.getElementById('main_world_winners');
+	div.innerHTML = '';
+	div.appendChild(document.createTextNode('MAIN WORLD CANDIDATE(S)'));
+	div.appendChild(document.createElement('hr'));
+	if (flagger.candidates.length < 1) {
+		div.appendChild(document.createTextNode('None found.'));
+	} else {
+		div.appendChild(document.createTextNode('Minimum to Qualify: ' + (flagger.cutoff + 1)));
+		const ol = document.createElement('ol');
+		flagger.candidates.forEach(world => {
+			const li = document.createElement('li');
+			li.innerHTML = world.main_world_rating + ' points, ' + world.getDesignation(n_stellar);
+			ol.appendChild(li);
+		});
+		div.appendChild(ol);
+	}
 }
 
 function toggleShowOptions(event, element, target_id)
@@ -6807,6 +6932,10 @@ window.addEventListener("load", function(event)
 			err_div.innerHTML = err.message;
 		}
 		if (output instanceof StarSystem) {
+			const main_fn = (world) => Math.max(1, world.habitability + world.sophont_presence) * (world.hydrographics + world.resource_rating);
+			const main_min = (data.has('main_tier') ? +data.get('main_tier') : 0.85);
+			const flagger = new MainWorldFlagger(main_fn, main_min);
+			flagger.apply(output.star_groups);
 			document.getElementById('system_profile_short').innerHTML = output.getProfileShort();
 			document.getElementById('system_profile_long').innerHTML = output.getProfileLong().split(':').join('<br>:');
 			document.getElementById('system_age').innerHTML = format(output.age, 3) + ' Gyr';
@@ -6822,6 +6951,7 @@ window.addEventListener("load", function(event)
 			document.getElementById('n_planet_rock').innerHTML = output.n_planet_rock;
 			document.getElementById('n_empty').innerHTML = output.n_empty;
 			displayStarSystem(output, data);
+			displayMainWorldResults(flagger, output.n_stellar);
 			// System generation history
 			const history = document.getElementById('roll_history');
 			history.innerHTML = '';
