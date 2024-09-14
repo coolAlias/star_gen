@@ -2051,6 +2051,7 @@ class World extends OrbitingBody
 		this.orbit = orbit;
 		this.orbit_au = orbitToAU(this.getTotalOrbit());
 		this.index = index;
+		this.designation_suffix = convertToRoman(this.index);
 		this.size = 0;
 		this.temperature = 0;
 		this.temperature_mean = -1;
@@ -2064,15 +2065,21 @@ class World extends OrbitingBody
 		this.gravity = 0;
 		this.habitability = 0;
 		this.hydrographics = 0;
-		this.designation_suffix = convertToRoman(this.index);
 		this.hill_sphere = 0;
 		this.moon_orbit_range = 0;
+		this.resource_rating = 0;
 		// Starport and PGL-T Social Characteristics
 		this.starport = -1;
 		this.population = -1;
 		this.government = -1;
 		this.law = -1;
 		this.technology = -1;
+		// Biological Ratings
+		this.biocompatibility = -1;
+		this.biocomplexity = -1;
+		this.biodiversity = -1;
+		this.biomass = -1;
+		this.sophont_presence = -1;
 		// Continuation Method: World Profile for main world, if any
 		this.world_profile = null;
 	}
@@ -2127,6 +2134,13 @@ class World extends OrbitingBody
 			desc.push(this.getTemperatureName() + ' (' + this.temperature + ')');
 			if (this.atmosphere?.type > 0) desc.push(this.atmosphere.getProfileLong());
 		}
+		const bio = this.getBiologicalProfile();
+		if (bio.length > 0) {
+			desc.push('Life: ' + bio);
+		}
+		if (this.sophont_presence > -1) {
+			desc.push(this.sophont_presence > 0 ? 'Living Sophonts' : 'Extinct Sophonts');
+		}
 		return desc.join(', ');
 	}
 
@@ -2139,6 +2153,18 @@ class World extends OrbitingBody
 		return (this.starport > -1 ? toHexCode(this.starport) : '')
 			+ this.getPhysicalProfile()
 			+ this.getSocialProfile();
+	}
+
+	getBiologicalProfile()
+	{
+		if (this.biomass < 0) return '';
+		const mxdc = [
+			toHexCode(this.biomass),
+			toHexCode(this.biocomplexity),
+			toHexCode(this.biodiversity),
+			toHexCode(this.biocompatibility),
+		];
+		return mxdc.join('');
 	}
 
 	getPhysicalProfile()
@@ -2270,8 +2296,6 @@ class PlanetoidBelt extends World
 		this.composition_c = 0;
 		this.composition_o = 0;
 		this.designation_suffix = 'P' + this.designation_suffix;
-		this.resource_rating = 0;
-		this.resource_rating_deviation = 0;
 		this.span = 0;
 		// Size 1 ("large" in this context) and Size S significant body counts
 		this.n_bodies_large = 0;
@@ -2296,7 +2320,7 @@ class PlanetoidBelt extends World
 		return format(this.span, 2)
 			+ '-' + this.getCompositionProfile()
 			+ '-' + this.bulk
-			+ '-' + this.getTotalResourceRating()
+			+ '-' + this.resource_rating
 			+ '-' + this.n_bodies_large
 			+ '-' + this.n_bodies_small;
 	}
@@ -2309,14 +2333,6 @@ class PlanetoidBelt extends World
 	getSizeCode()
 	{
 		return '0';
-	}
-
-	/**
-	 * Planetary belt resource ratings always range between 2 and 12
-	 */
-	getTotalResourceRating()
-	{
-		return clamp(this.resource_rating + this.resource_rating_deviation, 2, 12);
 	}
 }
 
@@ -2565,6 +2581,47 @@ class Atmosphere
 	{
 		const taints = this.getTaintProfile();
 		return this.getProfileShort() + (taints.length > 0 ? ' ' + taints : '');
+	}
+
+	getBiomassMod()
+	{
+		// DM-6 for Atmosphere 0
+		if (this.type === 0) return -6;
+		// DM-4 for Atmosphere 1
+		if (this.type === 1) return -4;
+		// DM-3 for Atmosphere 2, 3, or E
+		if ([2, 3, 14].includes(this.type)) return -3;
+		// DM-2 for Atmosphere 2, 3, or E
+		if ([4, 5].includes(this.type)) return -2;
+		// DM+2 for Atmosphere 8, 9, or D
+		if ([8, 9, 13].includes(this.type)) return 2;
+		// DM-3 for Atmosphere A
+		if (this.type === 10) return -3;
+		// DM-5 for Atmosphere B or F+
+		if (this.type === 11 || this.type > 15) return -5;
+		// DM-7 for Atmosphere C
+		if (this.type === 12) return -7;
+		// DM+0 for anything else
+		return 0;
+	}
+
+	getBiocompatibilityMod()
+	{
+		// DM-2 for any Atmosphere with a taint
+		const dm = (this.taints.length > 0 ? -2 : 0);
+		// DM-10 for Atmosphere C
+		if (this.type === 12) return dm - 10;
+		// DM-8 for Atmosphere 0, 1, B, G, or H
+		if ([0, 1, 11].includes(this.type) || this.type > 15) return dm - 8;
+		// DM-6 for Atmosphere A or F
+		if (this.type === 10 || this.type === 15) return dm - 6;
+		// DM-1 for Atmosphere D or E
+		if (this.type === 13 || this.type === 14) return dm - 1;
+		// DM+1 for Atmosphere 3, 5, or 8
+		if ([3, 5, 8].includes(this.type)) return dm + 1;
+		// DM+2 for Atmosphere 6
+		if (this.type === 6) return dm + 2;
+		return dm;
 	}
 
 	getDensityName()
@@ -5098,7 +5155,7 @@ class WorldFactory extends AbstractFactory
 		belt.span = this.genPlanetoidBeltSpan(system, belt);
 		this.genPlanetoidBeltComposition(belt);
 		belt.bulk = Math.max(1, this.genPlanetoidBeltBulk(system, belt));
-		belt.resource_rating = Math.max(0, this.genPlanetoidBeltResourceRating(belt));
+		belt.resource_rating = clamp(this.genPlanetoidBeltResourceRating(belt), 2, 12);
 		belt.n_bodies_large = Math.max(0, this.genPlanetoidBeltBodyCountLarge(belt));
 		belt.n_bodies_small = Math.max(0, this.genPlanetoidBeltBodyCountSmall(belt));
 		log('Planetoid Belt ' + belt.getDesignation(system.n_stellar) + ' profile: ' + belt.getProfileLong());
@@ -5281,6 +5338,183 @@ class WorldFactory extends AbstractFactory
 		world.habitability = clamp(this.genHabitabilityRating(world), 0, 12);
 		world.albedo = this.genAlbedo(world);
 		world.temperature_mean = this.genTemperatureMeanEstimate(world);
+		world.biomass = clamp(this.genBiomass(system, world), 0, 16);
+		// Special Case: Set Biomass of 0 to -1 to indicate no Life
+		if (world.biomass < 1) world.biomass = -1;
+		world.biocomplexity = this.genBiocomplexity(system, world);
+		world.biodiversity = this.genBiodiversity(system, world);
+		world.biocompatibility = this.genBiocompatibility(system, world);
+		world.resource_rating = clamp(this.genTerrestrialResourceRating(world), 2, 12);
+		world.sophont_presence = this.genSophontPresence(system, world);
+	}
+
+	genTerrestrialResourceRating(world)
+	{
+		// DM+1 per Size (treat Size S as 0)
+		let dm = Math.max(0, world.size);
+		// DM+2 for Density > 1.12
+		if (world.density > 1.12) dm += 2;
+		// DM-2 for Density < 0.5
+		if (world.density < 0.5) dm -= 2;
+		// DM+2 for Biomass 3+
+		if (world.biomass > 2) dm += 2;
+		// DM+1 for Biodiversity 8-10
+		if (world.biodiversity > 7 && world.biodiversity < 11) dm += 1;
+		// DM+2 for Biodiversity 11+
+		if (world.biodiversity > 10) dm += 2;
+		// DM-1 for Compatibility < 4, but only if Biomass as at least 1
+		if (world.biocompatibility < 4 && world.biomass > 0) dm -= 1;
+		// DM+2 for Compatibility 8+
+		if (world.biocompatibility > 7) dm += 2;
+		return this.roll(2, 6, dm - 7, 'Resource Rating');
+	}
+
+	genBiomass(system, world)
+	{
+		const dm = clamp(this.getBiomassMod(system, world), -12, 4);
+		const roll = this.roll(2, 6, dm, 'Biomass Rating');
+		// Special Case: Atmospheres with a Biologic taint and biomass < 1 sets biomass and biocomplexity to 1
+		if (world.biomass < 1 && world.atmosphere.taints.find(t => t.subtype === TAINT_B) !== undefined) {
+			world.biocomplexity = 1;
+			return 1;
+		}
+		// Special Case: Atmospheres 0, 1, A, B, C, or F+ with biomass of 1+ add one less than the absolute value of the atmosphere modifier to their biomass rating
+		if (roll > 0 && ([0, 1, 10, 11, 12].includes(world.atmosphere.type) || world.atmosphere.type > 14)) {
+			return roll + Math.abs(world.atmosphere.getBiomassMod()) - 1;
+		}
+		return roll;
+	}
+
+	getBiomassMod(system, world)
+	{
+		let dm = world.atmosphere.getBiomassMod();
+		dm += this.getBiomassModHydrographics(world.hydrographics);
+		dm += this.getBiomassModSystemAge(system.age);
+		dm += this.getBiomassModTemperature(world.temperature);
+		return dm;
+	}
+
+	getBiomassModHydrographics(hydrographics)
+	{
+		// DM-4 for Hydrographics 0
+		if (hydrographics < 1) return -4;
+		// DM-2 for Hydrographics 1-3
+		if (hydrographics < 4) return -2;
+		// DM+1 for Hydrographics 6-8
+		if (hydrographics > 5 && hydrographics < 9) return 1;
+		// DM+2 for Hydrographics 9+
+		if (hydrographics > 8) return 2;
+		// DM+0 for anything else
+		return 0;
+	}
+
+	getBiomassModSystemAge(age)
+	{
+		// DM-6 for Age < 0.2 Gyrs
+		if (age < 0.2) return -6;
+		// DM-2 for Age < 1 Gyrs
+		if (age < 1) return -2;
+		// DM+1 for Age > 4 Gyrs
+		if (age > 4) return 1;
+		// DM+0 for anything else
+		return 0;
+	}
+
+	getBiomassModTemperature(temperature)
+	{
+		// DM-6 for Boiling or Frozen
+		if (temperature < 3 || temperature > 11) return -6;
+		// DM-2 for Hot or Cold
+		if (temperature < 5 || temperature > 9) return -2;
+		// DM+2 for Temperate
+		return 2;
+	}
+
+	genBiocomplexity(system, world)
+	{
+		// Special Case: Biocomplexity already set by previous special case
+		if (world.biocomplexity > -1) return world.biocomplexity;
+		// Special Case: Biocomplexity is 0 if Biomass is 0-
+		if (world.biomass < 1) return 0;
+		const dm = this.getBiocomplexityMod(system, world);
+		return clamp(this.roll(2, 6, dm - 7, 'Biocomplexity Rating'), 0, 15);
+	}
+
+	getBiocomplexityMod(system, world)
+	{
+		// DM+1 per Biomass up to 9
+		let dm = Math.min(9, world.biomass);
+		// DM-2 if Atmosphere not 4-9
+		if (world.atmosphere.type < 4 || world.atmosphere.type > 9) dm -= 2;
+		// DM-2 if Atmosphere has a Low Oxygen taint
+		if (world.atmosphere.taints.find(t => t.subtype === TAINT_B) !== undefined) dm -= 2;
+		// DM for System Age
+		dm += this.getBiocomplexityModSystemAge(system.age);
+		return dm;
+	}
+
+	getBiocomplexityModSystemAge(age)
+	{
+		// DM-10 for Age < 1 Gyrs
+		if (age < 1.01) return -10;
+		// DM-8 for Age < 2 Gyrs
+		if (age < 2.01) return -8;
+		// DM-4 for Age < 3 Gyrs
+		if (age < 3.01) return -4;
+		// DM-2 for Age < 4 Gyrs
+		if (age < 4.01) return -2;
+		// DM+0 for anything else
+		return 0;
+	}
+
+	genBiodiversity(system, world)
+	{
+		// Special Case: Biodiversity is 0 if Biomass is 0-
+		if (world.biomass < 1) return 0;
+		const dm = Math.ceil((world.biomass + world.biocomplexity) / 2);
+		const roll = this.roll(2, 6, dm - 7, 'Biodiversity Rating');
+		return Math.max(1, roll);
+	}
+
+	genBiocompatibility(system, world)
+	{
+		// Special Case: Biocompatibility is 0 if Biomass is 0-
+		if (world.biomass < 1) return 0;
+		const dm = this.getBiocompatibilityMod(system, world);
+		const roll = this.roll(2, 6, dm, 'Biocompatibility Rating');
+		return Math.max(0, roll);
+	}
+
+	getBiocompatibilityMod(system, world)
+	{
+		let dm = world.atmosphere.getBiocompatibilityMod();
+		// DM-1 per 2 points of Biocomplexity (round down)
+		dm -= Math.floor(world.biocomplexity / 2);
+		// DM-2 for System Age > 8 Gyrs
+		if (system.age > 8) dm -= 2;
+		return dm;
+	}
+
+	/**
+	 * @return int A value of -1 indicates no present whatsoever, 0 evidence of extinct sophonts, and 1 present of live sophonts
+	 */
+	genSophontPresence(system, world)
+	{
+		if (world.biocomplexity < 8) {
+			return -1;
+		}
+		// 13+ indicates presence of living sophonts
+		let dm = Math.min(9, world.biocomplexity);
+		if (this.roll(2, 6, dm - 7, 'Sophont Presence: Living') > 12) {
+			return 1;
+		}
+		// DM+1 for System Age > 5 Gyrs
+		if (system.age > 5) dm++;
+		// 13+ indicates evidence of extinct sophonts
+		if (this.roll(2, 6, dm - 7, 'Sophont Presence: Extinct') > 12) {
+			return 0;
+		}
+		return -1;
 	}
 
 	genHydrographicsCode(world, greenhouse = false)
