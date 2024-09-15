@@ -74,6 +74,8 @@ Worlds with an Atmosphere code of 4-9 will be placed around an HZCO if possible.
 
 **Planets: Per-Star Empty Orbits** Roll for empty orbits for each star separately instead of for the star system as a whole.
 
+**Planets: Life - Check Every World** By default, only worlds within the HZCO or pre-determined Main Worlds are checked for native lifeforms. Enable this option to check every world.
+
 ## Notes
 
 **Orbit#** Orbit#s are measured from the object being orbited. All Secondary stars and groups of stars orbit the Primary Star; Companions orbit their host; Planets may orbit an individual star or a group of stars.

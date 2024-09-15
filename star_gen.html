@@ -268,6 +268,9 @@
 					<div class="input_container">
 						<label for="hill_moon_qty"><input id="hill_moon_qty" name="hill_moon_qty" type="checkbox" checked /> Planets: Use Hill Sphere for DM-1 per die to Moon Qty</label>
 					</div>
+					<div class="input_container">
+						<label for="bio_all"><input id="bio_all" name="bio_all" type="checkbox" /> Planets: Life - Check Every World</label>
+					</div>
 				</div>
 				<p class="show-options"><a href="#" onclick="return toggleShowOptions(event, this, 'options_stellar')">Show More</a></p>
 			</div>
@@ -4994,6 +4997,7 @@ class WorldFactory extends AbstractFactory
 {
 	/**
 	 * @param FormData options:
+	 *   @option bool bio_all True to check all worlds for life rather than only the Main World and those within an HZ
 	 *   @option bool flat_temp True to use 7+DMs when determining the temperature of worlds outside the HZ
 	 *   @option bool hill_moon_qty True to use only the Hill Sphere when determining DM-1 per die for Significant Moon Qty
 	 *   @option bool var_mass True to enable variations in world mass
@@ -5007,6 +5011,7 @@ class WorldFactory extends AbstractFactory
 	constructor(options, atmosphere_factory = null)
 	{
 		super();
+		this.bio_all = options.has('bio_all');
 		this.enable_flat_temp = options.has('flat_temp');
 		this.hill_moon_qty = options.has('hill_moon_qty');
 		this.enable_var_mass = options.has('var_mass');
@@ -5495,6 +5500,11 @@ class WorldFactory extends AbstractFactory
 
 	genBiomass(system, world)
 	{
+		// By default, only worlds within the HZCO are checked for life, as well as any pre-determined Main World
+		if (!this.bio_all && !world.isInHzco() && (world.world_profile === null || !world.world_profile.isApplicable(world))) {
+			log('Biomass: Skipping non-main world ' + world.getDesignation(system.n_stellar) + ' because it is not within the HZCO');
+			return -1;
+		}
 		const dm = clamp(this.getBiomassMod(system, world), -12, 4);
 		const roll = this.roll(2, 6, dm, 'Biomass Rating');
 		// Special Case: Atmospheres with a Biologic taint and biomass < 1 sets biomass and biocomplexity to 1
