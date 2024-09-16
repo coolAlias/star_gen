@@ -2219,7 +2219,7 @@ class World extends OrbitingBody
 		let desc = [];
 		if (this.isInHzco()) desc.push('HZ');
 		if (this.orbit_inclination > 0) desc.push('Inclined ' + this.orbit_inclination + '°');
-		if (this.habitability > 0) desc.push('HR:' + this.habitability);
+		if (this.habitability > 0) desc.push('HR:' + toHexCode(this.habitability));
 		desc.push(this.getTypeName());
 		if (this.type === PLANET_ROCK || this.type === PLANET_MOON) {
 			desc.push(this.getCompositionName());
