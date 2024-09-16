@@ -417,7 +417,46 @@
 				<tr>
 			</template>
 		</div>
-		<div id="main_world_winners" class="container">
+		<div id="main_world_candidates" class="container hide">
+			<h3 class="small-caps">Main World Candidate(s)</h3>
+			<hr>
+			<span>Minimum to Qualify: <span id="main_world_min"></span></span>
+			<table id="main_world_tbl">
+				<thead>
+					<tr>
+						<th>Score</th>
+						<th>Primary</th>
+						<th>Object</th>
+						<th>SAH/UWP</th>
+						<th>HZ?</th>
+						<th>Habitability</th>
+						<th>Resources</th>
+						<th>Biomass</th>
+						<th>Complexity</th>
+						<th>Diversity</th>
+						<th>Compatibility</th>
+						<th>Sophonts</th>
+					</tr>
+				</thead>
+				<tbody id="main_world_tbl_entries">
+				</tbody>
+			</table>
+			<template id="main_world_row_template">
+				<tr>
+					<td class="right"></td>
+					<td></td>
+					<td></td>
+					<td></td>
+					<td></td>
+					<td></td>
+					<td></td>
+					<td></td>
+					<td></td>
+					<td></td>
+					<td></td>
+					<td></td>
+				<tr>
+			</template>
 		</div>
 		<div id="roll_history" class="container">
 		</div>
@@ -7152,21 +7191,34 @@ function buildRollHistoryTable(entry)
 
 function displayMainWorldResults(flagger, n_stellar = 1)
 {
-	const div = document.getElementById('main_world_winners');
-	div.innerHTML = '';
-	div.appendChild(document.createTextNode('MAIN WORLD CANDIDATE(S)'));
-	div.appendChild(document.createElement('hr'));
+	const div = document.getElementById('main_world_candidates');
 	if (flagger.candidates.length < 1) {
-		div.appendChild(document.createTextNode('None found.'));
+		div.classList.add('hide');
 	} else {
-		div.appendChild(document.createTextNode('Minimum to Qualify: ' + (flagger.cutoff + 1)));
-		const ol = document.createElement('ol');
-		flagger.candidates.forEach(world => {
-			const li = document.createElement('li');
-			li.innerHTML = world.main_world_rating + ' points, ' + world.getDesignation(n_stellar);
-			ol.appendChild(li);
+		div.classList.remove('hide');
+		document.getElementById('main_world_min').innerHTML = (flagger.cutoff + 1);
+		const table = document.getElementById('main_world_tbl');
+		const body = table.querySelector('tbody');
+		const row_template = document.getElementById('main_world_row_template');
+		body.replaceChildren();
+		flagger.candidates.forEach(entry => {
+			const clone = row_template.content.cloneNode(true);
+			const row = clone.querySelector('tr');
+			let j = 0;
+			row.children[j++].innerHTML = entry.main_world_rating;
+			row.children[j++].innerHTML = entry.getHostStar().getDesignation(n_stellar);
+			row.children[j++].innerHTML = entry.getDesignation(0);
+			row.children[j++].innerHTML = entry.getProfileShort();
+			row.children[j++].innerHTML = (entry.isInHzco() ? 'Y' : 'N');
+			row.children[j++].innerHTML = toHexCode(entry.habitability);
+			row.children[j++].innerHTML = toHexCode(entry.resource_rating);
+			row.children[j++].innerHTML = toHexCode(Math.max(0, entry.biomass));
+			row.children[j++].innerHTML = toHexCode(entry.biocomplexity);
+			row.children[j++].innerHTML = toHexCode(entry.biodiversity);
+			row.children[j++].innerHTML = toHexCode(entry.biocompatibility);
+			row.children[j++].innerHTML = (entry.sophont_presence < 0 ? 'None' : (entry.sophont_presence > 0 ? 'Living' : 'Extinct'));
+			body.appendChild(row);
 		});
-		div.appendChild(ol);
 	}
 }
 
