@@ -1449,10 +1449,14 @@ class OrbitingBody
 		this.orbit_au = 0;
 		this.orbit_deviation = 0;
 		this.orbit_eccentricity = 0;
+		this.orbit_eccentricity_dm = 0;
 		// Exclusion zone is the absolute Minimum Allowable Orbit#, typically based on the object's diameter
 		this.orbit_exclusion_zone = 0;
+		this.orbit_inclination = 0;
+		this.orbit_lagrange = 0;
 		this.orbit_major_min = 0;
 		this.orbit_major_max = 0;
+		this.orbit_parent_index = null;
 		this.orbit_period = 0;
 		this.orbit_retrograde = false;
 		// Min and Max allowed Orbit#s, centered on this object, for any other bodies that may orbit it
@@ -1571,6 +1575,34 @@ class AbstractStar extends OrbitingBody
 	{
 		super(null);
 		this.hzco = 0;
+		this.anomalous = [];
+	}
+
+	addAnomalousPlanetData(orbit, data)
+	{
+		const index = 1 + this.bodies.findLastIndex((value) => round(value, 3) <= round(orbit, 3));
+		this.bodies.splice(index, 0, orbit);
+		// Special Case: Trojans need to know their parent orbit, and that orbit cannot be empty
+		if (data.orbit_is_trojan) {
+			data.orbit_parent_index = index - 1;
+		}
+		this.anomalous.forEach(entry => {
+			if (entry.index >= index) {
+				entry.index++;
+				if (entry.data.orbit_is_trojan && entry.data.orbit_parent_index > index) {
+					entry.data.orbit_parent_index++;
+				}
+			}
+		});
+		this.anomalous.push({'index': index, 'data': data});
+		log('Anomalous planet assigned to Orbit# ' + orbit.toFixed(3) + ' around star ' + this.getDesignation() + ' at index ' + index);
+		log(data);
+	}
+
+	getAnomalousPlanetDataAt(index)
+	{
+		const entry = this.anomalous.find((v, k) => v.index === index);
+		return entry === undefined ? null : entry.data;
 	}
 
 	getHzco(n = 3)
@@ -2132,7 +2164,7 @@ class World extends OrbitingBody
 	getDesignation(n_stars = 1)
 	{
 		const prefix = (n_stars > 1 ? this.host.getDesignation(n_stars) + ' ' : '');
-		return prefix + this.designation_suffix;
+		return prefix + this.designation_suffix + (this.orbit_lagrange > 0 ? '-L' + (3 + this.orbit_lagrange) : '');
 	}
 
 	/**
@@ -2142,6 +2174,7 @@ class World extends OrbitingBody
 	{
 		let desc = [];
 		if (this.isInHzco()) desc.push('HZ');
+		if (this.orbit_inclination > 0) desc.push('Inclined ' + this.orbit_inclination + '°');
 		if (this.habitability > 0) desc.push('HR:' + this.habitability);
 		desc.push(this.getTypeName());
 		if (this.type === PLANET_ROCK || this.type === PLANET_MOON) {
@@ -2432,6 +2465,58 @@ class PlanetaryRing extends Moon
 	getSizeCode()
 	{
 		return 'R';
+	}
+}
+
+class AnomalousPlanetData
+{
+	constructor(eccentricity_dm, inclination = 0, retrograde = false, trojan = false)
+	{
+		this.orbit_eccentricity_dm = eccentricity_dm;
+		this.orbit_inclination = inclination;
+		this.orbit_parent_index = null;
+		this.orbit_retrograde = retrograde;
+		this.orbit_is_trojan = trojan;
+	}
+}
+
+class WorldPlaceHolder
+{
+	constructor(group_index, orbit, data = null)
+	{
+		this.group_index = group_index;
+		this.orbit = orbit;
+		this.type = null;
+		this.main = false;
+		this.allow_empty = (data === null);
+		this.orbit_eccentricity_dm = (data ? data.orbit_eccentricity_dm : 0);
+		this.orbit_inclination = (data ? data.orbit_inclination : 0);
+		this.orbit_parent_index = (data ? data.orbit_parent_index : null);
+		this.orbit_retrograde = (data ? data.orbit_retrograde : false);
+		this.orbit_is_trojan = (data ? data.orbit_is_trojan : false);
+	}
+
+	apply(world, world_profile = null)
+	{
+		world.orbit_eccentricity_dm = this.orbit_eccentricity_dm;
+		world.orbit_inclination = this.orbit_inclination;
+		world.orbit_parent_index = this.orbit_parent_index;
+		world.orbit_retrograde = this.orbit_retrograde;
+		if (this.main) {
+			world.world_profile = world_profile;
+		}
+	}
+
+	canPlaceEmpty()
+	{
+		return this.type === null && this.allow_empty;
+	}
+
+	canPlaceType(type)
+	{
+		return (type === PLANET_EMPTY
+			? this.canPlaceEmpty()
+			: this.type === null && (!this.orbit_is_trojan || type !== PLANET_BELT));
 	}
 }
 
@@ -4019,7 +4104,10 @@ class StarSystemFactory extends AbstractFactory
 			});
 			
 			// Step 7: Anomalous Planets
-			// TODO
+			const n_anomalous = clamp(this.roll(2, 6, -9, 'Anomalous Planet Count'), 0, 3);
+			if (n_anomalous > 0) {
+				this.genAnomalousPlanets(system, n_anomalous);
+			}
 			
 			// Step 8: Placing Worlds
 			this.placeWorlds(system, world_profile);
@@ -4032,7 +4120,13 @@ class StarSystemFactory extends AbstractFactory
 					this.world_factory.flushHistory(body);
 					// Eccentricity and related characteristics
 					const ecc_world = this.world_factory.getEccentricityMod(system, body);
-					body.orbit_eccentricity = this.genEccentricity(ecc_world, 'Planetary Orbital Eccentricity');
+					// Special Case: Trojan Planets use the parent's eccentricity and inclination
+					if (body.orbit_parent_index !== null) {
+						body.orbit_eccentricity = group.bodies[body.orbit_parent_index].orbit_eccentricity;
+						body.orbit_inclination = group.bodies[body.orbit_parent_index].orbit_inclination;
+					} else {
+						body.orbit_eccentricity = this.genEccentricity(ecc_world, 'Planetary Orbital Eccentricity');
+					}
 					this.calculateOrbitalCharacteristics(body);
 					this.flushHistory(body);
 					// Orbital Period
@@ -4833,6 +4927,73 @@ class StarSystemFactory extends AbstractFactory
 		}
 	}
 
+	genAnomalousPlanets(system, n_anomalous)
+	{
+		const group_indexes = system.star_groups
+			.map((group, index) => (group.getTotalAllowedOrbits() > 0 ? index : null))
+			.filter((v) => v !== null);
+		if (group_indexes.length < 1) {
+			log('Failed to place Anomalous Planets - no stars or star groups contained any Allowable Orbits');
+			return;
+		}
+		log('Anomalous Planets: Attempting to place ' + n_anomalous + ' planets around ' + group_indexes.length + ' possible star(s) and/or star group(s)');
+		for (let i = 0; i < n_anomalous; i++) {
+			const j = this.roll(1, group_indexes.length, -1, 'Anomalous Planet: Star / Group Index');
+			this.flushHistory(system);
+			const index = group_indexes[j];
+			const group = system.star_groups[index];
+			const roll = this.roll(2, 6, 0, 'Anomalous Planet Type');
+			const data = this.genAnomalousPlanetData(roll);
+			const group_spread = (this.per_star_baseline ? group.getMinimumOrbitSpread() : 0);
+			const spread = (group_spread > 0 ? group_spread : system.getMinimumOrbitSpread());
+			const orbit = this.genAnomalousPlanetOrbitNumber(group, spread, data.orbit_is_trojan);
+			group.addAnomalousPlanetData(orbit, data);
+			this.incrementAnomalousPlanetCount(system, group);
+			this.flushHistory(group);
+		}
+	}
+
+	genAnomalousPlanetOrbitNumber(group, spread, trojan = false)
+	{
+		if (trojan) {
+			const index = this.roll(1, group.bodies.length, -1, 'Anomalous Planet: Trojan Orbit#');
+			return group.bodies[index];
+		}
+		const max = group.getMaximumAllowableOrbit();
+		const min = group.getMinimumAllowableOrbit();
+		const diff = max - min;
+		const roll = 0.01 * this.roll(1, 100, 0, 'Anomalous Planet: Random Orbit#');
+		return min + (roll * diff);
+	}
+
+	genAnomalousPlanetData(roll)
+	{
+		// Trojans do not roll for eccentricity so don't worry about their DM
+		const eccentricity_dm = (roll === 8 ? 5 : 2);
+		const inclination = (roll === 9 ? this.genAnomalousPlanetInclination() : 0);
+		const retrograde = (roll > 9 && roll < 12);
+		const trojan = (roll > 11);
+		return new AnomalousPlanetData(eccentricity_dm, inclination, retrograde, trojan);
+	}
+
+	genAnomalousPlanetInclination()
+	{
+		return (10 * this.roll(1, 6, 2, 'Anomalous Orbit: Inclination')) + this.roll(1, 10, 0, 'Anomalous Orbit: Inclination');
+	}
+
+	incrementAnomalousPlanetCount(system, group)
+	{
+		if (system.n_planet_rock < 13) {
+			log('Anomalous Planet adding +1 Terrestrial to ' + group.getDesignation(system.n_stellar));
+			system.n_planet_rock++;
+		} else {
+			log('Anomalous Planet adding +1 Planetoid Belt to ' + group.getDesignation(system.n_stellar));
+			system.n_planet_belt++;
+		}
+		system.n_planets++;
+		group.n_bodies++;
+	}
+
 	placeWorlds(system, world_profile = null)
 	{
 		// Special Case: Young Protostar systems (i.e. < 0.002 Gyr old) have special rules for world generation
@@ -4846,28 +5007,35 @@ class StarSystemFactory extends AbstractFactory
 		system.star_groups.forEach(group => group.bodies = []);
 		// Create the actual World objects for each star/group
 		let b_index = 1;
-		let p_index = 1;
+		let p_index = 0;
+		let trojans = 0;
 		let host = null;
 		worlds.forEach(entry => {
-			if (host === null || host.getDesignation(system.n_stellar) !== system.star_groups[entry['group_index']].getDesignation(system.n_stellar)) {
-				host = system.star_groups[entry['group_index']];
+			if (host === null || host.getDesignation(system.n_stellar) !== system.star_groups[entry.group_index].getDesignation(system.n_stellar)) {
+				host = system.star_groups[entry.group_index];
 				b_index = 1;
-				p_index = 1;
+				p_index = 0;
+				trojans = 0;
 			}
-			if (entry['type'] === PLANET_EMPTY) {
-				// no-op
-			} else if (entry['type'] === PLANET_BELT) {
-				const belt = new PlanetoidBelt(host, entry['orbit'], b_index++);
-				if (entry['main']) {
-					belt.world_profile = world_profile;
-				}
+			if (entry.type === PLANET_EMPTY) {
+				trojans = 0;
+			} else if (entry.type === PLANET_BELT) {
+				const belt = new PlanetoidBelt(host, entry.orbit, b_index++);
+				entry.apply(belt, world_profile);
 				host.bodies.push(belt);
+				trojans = 0;
 			} else {
-				const world = new World(host, entry['orbit'], p_index++, entry['type']);
-				if (entry['main']) {
-					world.world_profile = world_profile;
+				// Special Case: Trojans increment the Lagrange index while within the same orbit, rather than the p_index
+				if (entry.orbit_is_trojan) {
+					trojans++;
+				} else {
+					p_index++;
+					trojans = 0;
 				}
+				const world = new World(host, entry.orbit, p_index, entry.type);
+				entry.apply(world, world_profile);
 				world.size = this.world_factory.genSize(system, world);
+				world.orbit_lagrange = trojans;
 				// Special Case: Protostar systems cap the size of terrestrial planets and moons at 1 per million years
 				let proto_adds = [];
 				const proto_diff = (world.size - proto_cap);
@@ -4875,9 +5043,9 @@ class StarSystemFactory extends AbstractFactory
 					world.size = proto_cap;
 					for (let i = 0; i < proto_diff; i++) {
 						// Add up to +/- 10% orbital variance
-						const orbit_var = 0.02 * entry['orbit'] * this.roll(2, 6, -7, 'Protostar Planetary Chunk: Additional orbit variance');
+						const orbit_var = 0.02 * entry.orbit * this.roll(2, 6, -7, 'Protostar Planetary Chunk: Additional orbit variance');
 						// Use the same planet index
-						const proto_add = new World(host, entry['orbit'] + orbit_var, p_index, entry['type']);
+						const proto_add = new World(host, entry.orbit + orbit_var, p_index, entry.type);
 						// Chunks < Size 0 become Size 0 to make lots of little asteroids
 						proto_add.size = Math.max(0, proto_cap - this.roll(1, 6, -1, 'Protostar Planetary Chunk: Size reduction'));
 						proto_adds.push(proto_add);
@@ -4889,13 +5057,13 @@ class StarSystemFactory extends AbstractFactory
 				// Special Case: Young Protostar systems (i.e. < 0.002 Gyr old) may have reduced a world's size below 0, indicating it should not be added
 				if (!is_young_protostar || world.size > -1) {
 					host.bodies.push(world);
-				} else {
+				} else if (!entry.orbit_is_trojan) {
 					p_index--; // planet not added; reduce planet index by 1
 				}
 				// Special Case: Young Protostar systems (i.e. < 0.002 Gyr old) add a belt in every slot with a gas giant or terrestrial planet, even if that planet was removed
 				if (is_young_protostar && (world.type === PLANET_GAS || world.type === PLANET_ROCK)) {
 					log('Protostar System < 0.002 Gyr in age: adding a Planetoid Belt in same orbit as ' + world.getDesignation(system.n_stellar));
-					host.bodies.push(new PlanetoidBelt(host, entry['orbit'], b_index++));
+					host.bodies.push(new PlanetoidBelt(host, entry.orbit, b_index++));
 				}
 				// Protostars add any extra terrestrial chunks
 				host.bodies.push(...proto_adds);
@@ -4910,14 +5078,21 @@ class StarSystemFactory extends AbstractFactory
 			const group = system.star_groups[i];
 			const n_bodies = group.n_bodies + group.n_empty;
 			for (let j = 0; j < n_bodies; j++) {
-				worlds.push({'group_index': i, 'orbit': group.bodies[j], 'type': null, 'main': false});
+				const placeholder = new WorldPlaceHolder(i, group.bodies[j], group.getAnomalousPlanetDataAt(j));
+				worlds.push(placeholder);
+				// Special Case: Trojans must prevent an EMPTY orbit from being placed in the parent slot
+				if (placeholder.orbit_parent_index !== null) {
+					const parent_index = placeholder.orbit_parent_index + worlds.length - j;
+					worlds[parent_index].allow_empty = false;
+					log('Anomalous Planet: Trojan will prevent empty orbits from being placed in parent orbit index ' + parent_index);
+				}
 			}
 			// Continuation Method: Place Main World with predetermined orbit
 			if (world_profile && world_profile.star_group === group) {
 				const main_index = world_profile.orbit_index + worlds.length - n_bodies;
 				const type = world_profile.getMainPlanetType(system);
-				worlds[main_index]['type'] = type;
-				worlds[main_index]['main'] = true;
+				worlds[main_index].type = type;
+				worlds[main_index].main = true;
 				log('Continuation Method: Main World placed at predetermined world index ' + main_index + ' with initial world type of ' + (new World(null, 0, 1, type)).getTypeName());
 				// Set the appropriate count when a Gas Giant or Belt is placed so star does not generate an extra one
 				if (type === PLANET_GAS) {
@@ -4932,10 +5107,10 @@ class StarSystemFactory extends AbstractFactory
 				for (let k = 0; k < group.n_empty; k++) {
 					let index = this.roll(1, n_bodies, -1, 'World Placement: Empty Orbit for ' + group.getDesignation(system.n_stellar));
 					// Ensure empty orbit placed in an undetermined slot
-					while (worlds[worlds.length - n_bodies + index]['type'] !== null) {
+					while (!worlds[worlds.length - n_bodies + index].canPlaceEmpty()) {
 						index = (index + 1 === n_bodies ? 0 : index + 1);
 					}
-					worlds[worlds.length - n_bodies + index]['type'] = PLANET_EMPTY;
+					worlds[worlds.length - n_bodies + index].type = PLANET_EMPTY;
 				}
 			}
 		};
@@ -4957,13 +5132,13 @@ class StarSystemFactory extends AbstractFactory
 				const label = (+type === PLANET_EMPTY ? 'Empty Orbit' : (+type === PLANET_GAS ? 'Gas Giant' : 'Planetoid Belt'));
 				let i = this.roll(1, worlds.length, -1, 'World Placement: ' + label);
 				// Find next available slot if already occupied
-				while (worlds[i]['type'] !== null) {
+				while (!worlds[i].canPlaceType(+type)) {
 					i++;
 					if (i === worlds.length) i = 0;
 				}
-				worlds[i]['type'] = +type;
+				worlds[i].type = +type;
 				if (main_type === +type && world_profile.orbit_index < 0) {
-					worlds[i]['main'] = true;
+					worlds[i].main = true;
 					world_profile.orbit_index = i;
 					log('Continuation Method: Main World placed at random world index ' + i + ' with initial world type of ' + (new World(null, 0, 1, +type)).getTypeName());
 				}
@@ -4971,16 +5146,16 @@ class StarSystemFactory extends AbstractFactory
 		}
 		// Fill the remaining slots with Terrestrial planets
 		for (let j = 0; j < worlds.length; j++) {
-			if (worlds[j]['type'] === null) {
-				worlds[j]['type'] = PLANET_ROCK;
+			if (worlds[j].canPlaceType(PLANET_ROCK)) {
+				worlds[j].type = PLANET_ROCK;
 			}
 		}
 		// Continuation Method: Choose a random Terrestrial as the Main World if not yet determined
 		if (world_profile && world_profile.orbit_index < 0) {
 			let index = this.roll(1, worlds.length, -1, 'Continuation Method: Random Terrestrial for Main World');
 			for (let x = index; x < worlds.length && world_profile.orbit_index < 0; x++) {
-				if (worlds[x]['type'] === PLANET_ROCK) {
-					worlds[x]['main'] = true;
+				if (worlds[x].type === PLANET_ROCK) {
+					worlds[x].main = true;
 					world_profile.orbit_index = x;
 					log('Continuation Method: Main World placed at random Terrestrial world index ' + x);
 				}
@@ -5067,7 +5242,7 @@ class WorldFactory extends AbstractFactory
 
 	getEccentricityMod(system, world)
 	{
-		let dm = 0;
+		let dm = world.orbit_eccentricity_dm;
 		const primary = system.getPrimaryStar();
 		// DM-1 For all Orbit#s below 1.0 if system is > 1 Gyr in age
 		if (system.age > 1 && world.getTotalOrbit() < 1) dm--;
