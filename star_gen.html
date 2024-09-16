@@ -4943,7 +4943,7 @@ class StarSystemFactory extends AbstractFactory
 			const index = group_indexes[j];
 			const group = system.star_groups[index];
 			const roll = this.roll(2, 6, 0, 'Anomalous Planet Type');
-			const data = this.genAnomalousPlanetData(roll);
+			const data = this.genAnomalousPlanetData(group, roll);
 			const group_spread = (this.per_star_baseline ? group.getMinimumOrbitSpread() : 0);
 			const spread = (group_spread > 0 ? group_spread : system.getMinimumOrbitSpread());
 			const orbit = this.genAnomalousPlanetOrbitNumber(group, spread, data.orbit_is_trojan);
@@ -4955,7 +4955,7 @@ class StarSystemFactory extends AbstractFactory
 
 	genAnomalousPlanetOrbitNumber(group, spread, trojan = false)
 	{
-		if (trojan) {
+		if (trojan && group.bodies.length > 0) {
 			const index = this.roll(1, group.bodies.length, -1, 'Anomalous Planet: Trojan Orbit#');
 			return group.bodies[index];
 		}
@@ -4966,13 +4966,14 @@ class StarSystemFactory extends AbstractFactory
 		return min + (roll * diff);
 	}
 
-	genAnomalousPlanetData(roll)
+	genAnomalousPlanetData(group, roll)
 	{
 		// Trojans do not roll for eccentricity so don't worry about their DM
 		const eccentricity_dm = (roll === 8 ? 5 : 2);
 		const inclination = (roll === 9 ? this.genAnomalousPlanetInclination() : 0);
 		const retrograde = (roll > 9 && roll < 12);
-		const trojan = (roll > 11);
+		// Special Case: If a trojan is rolled as the first planet around a host star, treat it as Random instead
+		const trojan = (roll > 11 && group.bodies.length > 0);
 		return new AnomalousPlanetData(eccentricity_dm, inclination, retrograde, trojan);
 	}
 
@@ -5028,6 +5029,10 @@ class StarSystemFactory extends AbstractFactory
 				// Special Case: Trojans increment the Lagrange index while within the same orbit, rather than the p_index
 				if (entry.orbit_is_trojan) {
 					trojans++;
+					// If the trojan is in a Planetoid Belt or the first planet in around a star, still need to increase p_index
+					if (host.bodies.length < 1 || host.bodies[host.bodies.length - 1].type === PLANET_BELT) {
+						p_index++;
+					}
 				} else {
 					p_index++;
 					trojans = 0;
