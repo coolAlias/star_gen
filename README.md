@@ -74,6 +74,10 @@ Worlds with an Atmosphere code of 4-9 will be placed around an HZCO if possible.
 
 **Planets: Per-Star Empty Orbits** Roll for empty orbits for each star separately instead of for the star system as a whole.
 
+**Planets: Temperature - Basic Mean Only** Determine the Mean Temperature using only the basic formula, and do not calculate the High or Low Temperature.
+
+**Planets: Temperature - Flat Roll Beyond HZCO** If checked, worlds outside the HZCO will use a flat 7 + DMs to determine their initial temperature range.
+
 **Planets: Life - Check Every World** By default, only worlds within the HZCO or pre-determined Main Worlds are checked for native lifeforms. Enable this option to check every world.
 
 ## Notes
