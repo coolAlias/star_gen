@@ -4236,7 +4236,7 @@ class StarSystemFactory extends AbstractFactory
 	/**
 	 * Calculates the values for the orbiting body's orbit_au, orbit_major_min, and orbit_major_max fields
 	 *
-	 * @param OribtingBody body
+	 * @param OrbitingBody body
 	 */
 	calculateOrbitalCharacteristics(body)
 	{
@@ -5234,7 +5234,6 @@ class WorldFactory extends AbstractFactory
 	 *   @option bool var_size True to enable variations in world diameter
 	 *   @option bool var_temp True to enable variations in world temperature
 	 *   @option bool per_star_baseline True to calculate baseline number, baseline Orbit#, and system spread for each secondary and companion star separately
-	 *   @option bool 
 	 * @param AtmosphereFactory|null
 	 */
 	constructor(options, atmosphere_factory = null)
