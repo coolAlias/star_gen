@@ -390,6 +390,10 @@
 						<th>Min</th>
 						<th>Max</th>
 						<th>Period</th>
+						<th>Sidereal</th>
+						<th>Solar</th>
+						<th>Days / Year</th>
+						<th>Axial Tilt</th>
 						<th>SAH/UWP</th>
 						<th>Sub</th>
 						<th>Notes</th>
@@ -400,6 +404,10 @@
 			</table>
 			<template id="planet_tbl_template">
 				<tr>
+					<td></td>
+					<td></td>
+					<td></td>
+					<td></td>
 					<td></td>
 					<td></td>
 					<td></td>
@@ -2155,6 +2163,10 @@ class World extends OrbitingBody
 		this.diameter_deviation = 0;
 		this.escape_velocity = 0;
 		this.gravity = 0;
+		this.obliquity = -1;
+		this.period_sidereal = null;
+		this.period_solar = null;
+		this.period_solar_year = null;
 		this.habitability = 0;
 		this.hydrographics = 0;
 		this.hill_sphere = 0;
@@ -2317,6 +2329,34 @@ class World extends OrbitingBody
 		const num = this.getTotalMass(); // Mass is already in units of Terra
 		const den = (this.type === PLANET_GAS ? d : d / TERRA_DIAMETER);
 		return Math.sqrt(num / den) * 11186 / 1000;
+	}
+
+	/**
+	 * @return string Human-readable version of the body's sidereal rotational period
+	 */
+	getPeriodSidereal()
+	{
+		return this.getPeriodInHours(this.period_sidereal);
+	}
+
+	/**
+	 * @return string Human-readable version of the body's solar rotational period
+	 */
+	getPeriodSolar()
+	{
+		return this.getPeriodInHours(this.period_solar);
+	}
+
+	getPeriodInHours(period)
+	{
+		if (period === null) return '-';
+		const h = Math.floor(period);
+		const r = (period - h) * 60;
+		const m = Math.floor(r);
+		const s = Math.floor((r - m) * 60);
+		return ('' + h) + 'h'
+			+ ('' + m).padStart(2, '0') + 'm'
+			+ ('' + s).padStart(2, '0') + 's';
 	}
 
 	getTemperatureName()
@@ -4181,6 +4221,7 @@ class StarSystemFactory extends AbstractFactory
 					// Orbital Period
 					const p_mass = body.getTotalMass() * TERRA_MASS_TO_SOL;
 					body.orbit_period = Math.sqrt(Math.pow(body.orbit_au, 3) / (p_mass + body.host.getOrbitalMass()));
+					this.world_factory.genRotationTraits(system, body);
 					// Determine Hill Sphere and Moon Orbit Range
 					body.hill_sphere = this.world_factory.genHillSphere(system, body);
 					body.moon_orbit_range = Math.floor(body.hill_sphere / 2) - 2;
@@ -4190,6 +4231,7 @@ class StarSystemFactory extends AbstractFactory
 						const ecc_moon = this.world_factory.getMoonEccentricityMod(moon);
 						moon.orbit_eccentricity = this.genEccentricity(ecc_world + ecc_moon, 'Moon Orbital Eccentricity');
 						moon.orbit_retrograde = (this.roll(2, 6, ecc_moon, 'Moon Orbit Direction') > 9);
+						this.world_factory.genRotationTraits(system, moon);
 						this.flushHistory(moon);
 					});
 					this.flushHistory(body);
@@ -5293,6 +5335,32 @@ class WorldFactory extends AbstractFactory
 		return albedo;
 	}
 
+	genAxialTilt(world)
+	{
+		const tilt = this.genAxialTiltBase(world);
+		const min = (10 * this.roll(1, 6, -1, 'Axial Tilt: +Minutes')) + this.roll(1, 10, -1, 'Axial Tilt: +Minutes');
+		const sec = (10 * this.roll(1, 6, -1, 'Axial Tilt: +Seconds')) + this.roll(1, 10, -1, 'Axial Tilt: +Seconds');
+		return (tilt > 180 ? 180 - (tilt - 180) : tilt) + (min / 60) + (sec / 3600);
+	}
+
+	genAxialTiltBase(world)
+	{
+		const first = this.roll(2, 6, 0, 'Axial Tilt Range');
+		const roll = this.roll(1, 6, 0, 'Axial Tilt Value');
+		if (first < 5) return (roll - 1) / 50;
+		if (first < 6) return roll / 5;
+		if (first < 7) return roll;
+		if (first < 8) return 6 + roll;
+		if (first < 10) return 5 + (roll * 5) + this.roll(1, 6, -1, 'Axial Tilt: +Degrees');
+		const second = this.roll(1, 6, 0, 'Axial Tilt Range: Extreme');
+		const bonus = this.roll(1, 10, -1, 'Axial Tilt: +Degrees');
+		if (second < 3) return 10 + bonus + (roll * 10);
+		if (second < 4) return 30 + bonus + (roll * 10);
+		if (second < 5) return 90 + bonus + (roll * this.roll(1, 6, 0, 'Axial Tilt Value'));
+		if (second < 6) return 180 + bonus - roll + this.roll(1, 6, 0, 'Axial Tilt Value');
+		return 120 + bonus + (roll * 10);
+	}
+
 	getEccentricityMod(system, world)
 	{
 		let dm = world.orbit_eccentricity_dm;
@@ -5350,6 +5418,54 @@ class WorldFactory extends AbstractFactory
 			return Math.min(hill_sphere_pd, comp_sphere_pd);
 		}
 		return hill_sphere_pd;
+	}
+
+	/**
+	 * Call after the world's orbit_period has been determined
+	 */
+	genRotationTraits(system, world)
+	{
+		// Planetoid Belts and Planetary Rings do not need to calculate these traits
+		if (world.type === PLANET_BELT || world.type === PLANET_RING) return;
+		world.period_sidereal = this.genPeriodSidereal(system, world);
+		world.period_solar_year = this.genPeriodSolarDaysPerYear(world);
+		world.period_solar = this.genPeriodSolar(world);
+		world.obliquity = this.genAxialTilt(world);
+		this.flushHistory(world);
+	}
+
+	genPeriodSidereal(system, world)
+	{
+		// DM+1 per full 2 Gyrs of system age
+		const dm = Math.floor(system.age / 2);
+		const f = (world.type === PLANET_GAS || world.size < 1 ? 2 : 4);
+		const period = this.genPeriodSiderealBase(world, dm, f);
+		const min = (10 * this.roll(1, 6, -1, 'Rotation Period: +Minutes')) + this.roll(1, 10, -1, 'Rotation Period: +Minutes');
+		const sec = (10 * this.roll(1, 6, -1, 'Rotation Period: +Seconds')) + this.roll(1, 10, -1, 'Rotation Period: +Seconds');
+		return period + (min / 60) + (sec / 3600);
+	}
+
+	genPeriodSiderealBase(world, dm, f)
+	{
+		const period = (f * this.roll(2, 6, -2, 'Rotation Period')) + this.roll(1, 6, 2 + dm, 'Rotation Period');
+		if (period > 39 && 4 < this.roll(1, 6, 0, 'Additional Rotation Period Check')) {
+			return period + this.genPeriodSiderealBase(world, dm, f);
+		}
+		return period;
+	}
+
+	genPeriodSolarDaysPerYear(world)
+	{
+		// Special Case: Treat sidereal day as negative for Axial Tilts greater than 90 degrees
+		const sidereal = (world.obliquity > 90 ? -world.period_sidereal : world.period_sidereal);
+		const year_length = 8766 * world.orbit_period;
+		return (year_length / sidereal) - 1;
+	}
+
+	genPeriodSolar(world)
+	{
+		const year_length = 8766 * world.orbit_period;
+		return (world.period_solar_year === null || Math.abs(world.period_solar_year) < Number.EPSILON ? -1 : (year_length / world.period_solar_year));
 	}
 
 	genSize(system, world)
@@ -7161,6 +7277,10 @@ function addPlanetTableRow(entry, body, template, n_stellar = 1, is_moon = false
 	row.children[j++].innerHTML = (is_moon ? '-' : format(entry.orbit_major_min, 3));
 	row.children[j++].innerHTML = (is_moon ? '-' : format(entry.orbit_major_max, 3));
 	row.children[j++].innerHTML = entry.getOrbitalPeriod();
+	row.children[j++].innerHTML = entry.getPeriodSidereal() + (entry.period_sidereal > 0 ? '<br> (' + entry.period_sidereal.toFixed(2) + ')' : '');
+	row.children[j++].innerHTML = entry.getPeriodSolar() + (entry.period_solar !== null ? '<br> (' + entry.period_solar.toFixed(2) + ')' : '');
+	row.children[j++].innerHTML = (entry.period_solar !== null ? round(Math.abs(entry.period_solar_year), 2).toLocaleString() : '-');
+	row.children[j++].innerHTML = (entry.obliquity > -1 ? entry.obliquity.toFixed(2) + '&deg;' : '-');
 	row.children[j++].innerHTML = entry.getProfileShort();
 	row.children[j++].innerHTML = (is_moon ? '-' : entry.getSignificantBodyCount());
 	row.children[j++].innerHTML = entry.getProfileNotes();
