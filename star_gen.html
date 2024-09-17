@@ -263,7 +263,10 @@
 						<label for="per_star_empty_orbits"><input id="per_star_empty_orbits" name="per_star_empty_orbits" type="checkbox" checked /> Planets: Per-Star Empty Orbits</label>
 					</div>
 					<div class="input_container">
-						<label for="flat_temp"><input id="flat_temp" name="flat_temp" type="checkbox" checked /> Planets: Use 7+DMs for Temperatures outside the HZ</label>
+						<label for="basic_temp"><input id="basic_temp" name="basic_temp" type="checkbox" checked /> Planets: Temperature - Basic Mean Only</label>
+					</div>
+					<div class="input_container">
+						<label for="flat_temp"><input id="flat_temp" name="flat_temp" type="checkbox" checked /> Planets: Temperature - Flat Roll Beyond HZCO</label>
 					</div>
 					<div class="input_container">
 						<label for="green_check"><input id="green_check" name="green_check" type="checkbox" checked /> Planets: Enable Runaway Greenhouse Effect</label>
@@ -383,7 +386,10 @@
 						<th>Density</th>
 						<th>Gravity</th>
 						<th>Esc V (km/s)</th>
-						<th>Temp (C)</th>
+						<th class="toggle-basic_temp hide">High (C)</th>
+						<th id="th_temp_mean">Temp (C)</th>
+						<th class="toggle-basic_temp hide">Low (C)</th>
+						<th>Albedo</th>
 						<th>Orbit#*</th>
 						<th>AU</th>
 						<th>Ecc</th>
@@ -411,6 +417,9 @@
 					<td></td>
 					<td></td>
 					<td></td>
+					<td class="toggle-basic_temp hide"></td>
+					<td></td>
+					<td class="toggle-basic_temp hide"></td>
 					<td></td>
 					<td></td>
 					<td></td>
@@ -2154,7 +2163,9 @@ class World extends OrbitingBody
 		this.designation_suffix = convertToRoman(this.index);
 		this.size = 0;
 		this.temperature = 0;
-		this.temperature_mean = -1;
+		this.temperature_mean = null;
+		this.temperature_high = null;
+		this.temperature_low = null;
 		this.type = type;
 		this.albedo = 0;
 		this.composition = 0;
@@ -2169,6 +2180,7 @@ class World extends OrbitingBody
 		this.period_solar_year = null;
 		this.habitability = 0;
 		this.hydrographics = 0;
+		this.surface_distribution = -1;
 		this.hill_sphere = 0;
 		this.moon_orbit_range = 0;
 		this.resource_rating = 0;
@@ -2392,6 +2404,19 @@ class World extends OrbitingBody
 	getHostStar()
 	{
 		return (this.host instanceof AbstractStar ? this.host : this.host.getHostStar());
+	}
+
+	/**
+	 * @return float The sum of the total Luminosity of all stars this world orbits, including its own star and its star's host or companion, if any
+	 */
+	getTotalLuminosity(system)
+	{
+		const host = this.getHostStar();
+		return system.stars.reduce((n, star) => {
+			return star.orbit_band <= host.orbit_band
+				? n + star.getTotalLuminosity() + (star.companion ? star.companion.getTotalLuminosity() : 0)
+				: n;
+		}, 0);
 	}
 
 	/**
@@ -4222,6 +4247,8 @@ class StarSystemFactory extends AbstractFactory
 					const p_mass = body.getTotalMass() * TERRA_MASS_TO_SOL;
 					body.orbit_period = Math.sqrt(Math.pow(body.orbit_au, 3) / (p_mass + body.host.getOrbitalMass()));
 					this.world_factory.genRotationTraits(system, body);
+					this.world_factory.genTemperatureExtremes(system, body);
+					this.world_factory.genTerrestrialLifeTraits(system, body);
 					// Determine Hill Sphere and Moon Orbit Range
 					body.hill_sphere = this.world_factory.genHillSphere(system, body);
 					body.moon_orbit_range = Math.floor(body.hill_sphere / 2) - 2;
@@ -4231,8 +4258,10 @@ class StarSystemFactory extends AbstractFactory
 						const ecc_moon = this.world_factory.getMoonEccentricityMod(moon);
 						moon.orbit_eccentricity = this.genEccentricity(ecc_world + ecc_moon, 'Moon Orbital Eccentricity');
 						moon.orbit_retrograde = (this.roll(2, 6, ecc_moon, 'Moon Orbit Direction') > 9);
-						this.world_factory.genRotationTraits(system, moon);
 						this.flushHistory(moon);
+						this.world_factory.genRotationTraits(system, moon);
+						this.world_factory.genTemperatureExtremes(system, moon);
+						this.world_factory.genTerrestrialLifeTraits(system, moon);
 					});
 					this.flushHistory(body);
 				});
@@ -5269,7 +5298,8 @@ class WorldFactory extends AbstractFactory
 	/**
 	 * @param FormData options:
 	 *   @option bool bio_all True to check all worlds for life rather than only the Main World and those within an HZ
-	 *   @option bool flat_temp True to use 7+DMs when determining the temperature of worlds outside the HZ
+	 *   @option bool basic_temp True to use the Basic Temperature formula to calculate Mean Temperature
+	 *   @option bool flat_temp True to use 7+DMs when determining the initial temperature roll of worlds outside the HZ
 	 *   @option bool hill_moon_qty True to use only the Hill Sphere when determining DM-1 per die for Significant Moon Qty
 	 *   @option bool var_mass True to enable variations in world mass
 	 *   @option bool var_orbit True to enable variations in moon orbit#s
@@ -5282,8 +5312,9 @@ class WorldFactory extends AbstractFactory
 	{
 		super();
 		this.bio_all = options.has('bio_all');
-		this.enable_flat_temp = options.has('flat_temp');
 		this.hill_moon_qty = options.has('hill_moon_qty');
+		this.enable_basic_temp = options.has('basic_temp');
+		this.enable_flat_temp = options.has('flat_temp');
 		this.enable_var_mass = options.has('var_mass');
 		this.enable_var_orbit = options.has('var_orbit');
 		this.enable_var_size = options.has('var_size');
@@ -5508,6 +5539,48 @@ class WorldFactory extends AbstractFactory
 			return this.roll(2, 6, 0, 'Terrestrial Size: Second Roll');
 		}
 		return this.roll(2, 6, 3, 'Terrestrial Size: Second Roll');
+	}
+
+	/**
+	 * Depends on nearly all physical and orbital characteristics, including rotation period and axial tilt
+	 */
+	genTemperatureExtremes(system, world)
+	{
+		// No-op if only using basic temperature formula
+		if (this.enable_basic_temp) return;
+		// Likewise, only calculate High and Low temperature for terrestrial planets and moons
+		if (world.type !== PLANET_ROCK && world.type !== PLANET_MOON) return;
+		// Variance Factor = Axial Tilt Factor + Rotation Factor + Geographic Factor, clamped between 0.0 and 1.0
+		const f_tilt = Math.abs(Math.sin(world.obliquity * Math.PI / 180));
+		const f_period = (world.period_solar > 2500
+			? 1.0
+			: Math.sqrt(Math.abs(world.period_solar)) / 50);
+		const geo_mod = (world.surface_distribution < 2 ? -0.1 : (world.surface_distribution > 8 ? 0.1 : 0));
+		const f_geo = ((10 - world.hydrographics) / 20) + geo_mod;
+		const f_var = clamp(f_tilt + f_period + f_geo, 0, 1);
+		// Include the luminosity from each star or group the world orbits, as well as its own star's companion or host if it orbits one or the other independently
+		const f_bar = 1 + world.atmosphere.bar;
+		const lum_mod = f_var / f_bar;
+		// Remaining factors are the same as or similar to those for calculating Mean Temperature
+		const au = orbitToAU(world.getHzcoOrbit());
+		const ecc = (world.host instanceof World ? world.host.orbit_eccentricity : world.orbit_eccentricity);
+		const f_num = (1 - world.albedo) * (1 + world.atmosphere.greenhouse_factor);
+		const lum = world.getTotalLuminosity(system);
+		log('Calculating High and Low Temperature for ' + world.getDesignation(system.n_stellar) + ': L = ' + lum + ' (mod = ' + lum_mod + '), A = ' + world.albedo + ', GF = ' + world.atmosphere.greenhouse_factor + ', Var Factors = ' + f_var + ', AU = ' + au + ', Ecc = ' + ecc);
+		world.temperature_high = 279 * Math.pow(lum * Math.min(1.999, 1 + lum_mod) * f_num / Math.pow(au * (1 - ecc), 2), 0.25);
+		world.temperature_low  = 279 * Math.pow(lum * Math.max(0.001, 1 - lum_mod) * f_num / Math.pow(au * (1 + ecc), 2), 0.25);
+	}
+
+	/**
+	 * Depends on star luminosities, world orbit, world albedo, and world atmosphere for greenhouse factor
+	 */
+	genTemperatureMean(system, world)
+	{
+		const au = orbitToAU(world.getHzcoOrbit());
+		const f_num = (1 - world.albedo) * (1 + world.atmosphere.greenhouse_factor);
+		const lum = world.getTotalLuminosity(system);
+		log('Calculating Mean Temperature for ' + world.getDesignation(system.n_stellar) + ': L = ' + lum + ', A = ' + world.albedo + ', GF = ' + world.atmosphere.greenhouse_factor + ', AU = ' + au);
+		return 279 * Math.pow(lum * f_num / Math.pow(au, 2), 0.25);
 	}
 
 	/**
@@ -5808,9 +5881,21 @@ class WorldFactory extends AbstractFactory
 			}
 		}
 		world.hydrographics_percentage = this.genHydrographicsPercentage(world);
+		world.surface_distribution = this.roll(2, 6, -2, 'Surface Distribution');
 		world.habitability = clamp(this.genHabitabilityRating(world), 0, 12);
 		world.albedo = this.genAlbedo(world);
-		world.temperature_mean = this.genTemperatureMeanEstimate(world);
+		world.temperature_mean = (this.enable_basic_temp
+			? this.genTemperatureMeanEstimate(world)
+			: this.genTemperatureMean(system, world));
+	}
+
+	/**
+	 * May depend on High and Low temperatures
+	 */
+	genTerrestrialLifeTraits(system, world)
+	{
+		// Only applicable to terrestrial planets and moons
+		if (world.type !== PLANET_ROCK && world.type !== PLANET_MOON) return;
 		world.biomass = clamp(this.genBiomass(system, world), 0, 16);
 		// Special Case: Set Biomass of 0 to -1 to indicate no Life
 		if (world.biomass < 1) world.biomass = -1;
@@ -5819,6 +5904,7 @@ class WorldFactory extends AbstractFactory
 		world.biocompatibility = this.genBiocompatibility(system, world);
 		world.resource_rating = clamp(this.genTerrestrialResourceRating(world), 2, 12);
 		world.sophont_presence = this.genSophontPresence(system, world);
+		this.flushHistory(world);
 	}
 
 	genTerrestrialResourceRating(world)
@@ -5868,7 +5954,7 @@ class WorldFactory extends AbstractFactory
 		let dm = world.atmosphere.getBiomassMod();
 		dm += this.getBiomassModHydrographics(world.hydrographics);
 		dm += this.getBiomassModSystemAge(system.age);
-		dm += this.getBiomassModTemperature(world.temperature);
+		dm += this.getBiomassModTemperature(world);
 		return dm;
 	}
 
@@ -5898,14 +5984,37 @@ class WorldFactory extends AbstractFactory
 		return 0;
 	}
 
-	getBiomassModTemperature(temperature)
+	getBiomassModTemperature(world)
+	{
+		return (this.enable_basic_temp
+			? this.getBiomassModTempBasic(world)
+			: this.getBiomassModTempAdvanced(world));
+	}
+
+	getBiomassModTempBasic(world)
 	{
 		// DM-6 for Boiling or Frozen
-		if (temperature < 3 || temperature > 11) return -6;
+		if (world.temperature < 3 || world.temperature > 11) return -6;
 		// DM-2 for Hot or Cold
-		if (temperature < 5 || temperature > 9) return -2;
+		if (world.temperature < 5 || world.temperature > 9) return -2;
 		// DM+2 for Temperate
 		return 2;
+	}
+
+	getBiomassModTempAdvanced(world)
+	{
+		let dm = 0;
+		// DM-2 for High > 353
+		if (world.temperature_high > 353) dm -= 2;
+		// DM-4 for High < 273
+		if (world.temperature_high < 273) dm -= 4;
+		// DM-4 for Mean > 353
+		if (world.temperature_mean > 353) dm -= 4;
+		// DM-2 for Mean < 273
+		if (world.temperature_mean < 273) dm -= 2;
+		// DM+2 for Mean between 273 and 303
+		if (world.temperature_mean >= 273 && world.temperature_mean <= 303) dm += 2;
+		return dm;
 	}
 
 	genBiocomplexity(system, world)
@@ -6094,11 +6203,36 @@ class WorldFactory extends AbstractFactory
 
 	getHabitabilityTempMod(world)
 	{
+		return (this.enable_basic_temp
+			? this.getHabitabilityTempModBasic(world)
+			: this.getHabitabilityTempModAdvanced(world));
+	}
+
+	getHabitabilityTempModBasic(world)
+	{
 		// DM-6 for Boiling or Frozen
 		if (world.temperature < 3 || world.temperature > 11) return -6;
 		// DM-2 for Hot or Cold
 		if (world.temperature < 5 || world.temperature > 9) return -2;
 		return 0;
+	}
+
+	getHabitabilityTempModAdvanced(world)
+	{
+		let dm = 0;
+		// DM-2 for High > 323
+		if (world.temperature_high > 323) dm -= 2;
+		// DM-2 for High < 279
+		if (world.temperature_high < 279) dm -= 2;
+		// DM-4 for Mean > 323
+		if (world.temperature_mean > 323) dm -= 4;
+		// DM-2 for Mean between 304 and 323
+		if (world.temperature_mean >= 304 && world.temperature_mean <= 323) dm -= 2;
+		// DM-2 for Mean < 273
+		if (world.temperature_mean < 273) dm -= 2;
+		// DM-2 for Low < 200
+		if (world.temperature_low < 200) dm -= 2;
+		return dm;
 	}
 
 	/**
@@ -7214,6 +7348,15 @@ function displayStarSystem(system, data)
 			body.bodies.forEach(moon => addPlanetTableRow(moon, p_body, p_temp, system.n_stellar, true));
 		});
 	});
+	const basic_temp = data.has('basic_temp');
+	document.querySelectorAll('.toggle-basic_temp').forEach((entry) => {
+		if (basic_temp) {
+			entry.classList.replace('show-table', 'hide');
+		} else {
+			entry.classList.replace('hide', 'show-table');
+		}
+	});
+	document.getElementById('th_temp_mean').innerHTML = (basic_temp ? 'Temp (C)' : 'Mean (C)');
 	const per_star = data.has('per_star_baseline');
 	document.querySelectorAll('.toggle-per_star_baseline').forEach((entry) => {
 		if (per_star) {
@@ -7270,7 +7413,10 @@ function addPlanetTableRow(entry, body, template, n_stellar = 1, is_moon = false
 	row.children[j++].innerHTML = (entry.density > 0 ? round(entry.density, 3) : '-');
 	row.children[j++].innerHTML = (entry.gravity > 0 ? round(entry.gravity, 3) : '-');
 	row.children[j++].innerHTML = (escape > 0 ? round(escape, 3) : '-');
-	row.children[j++].innerHTML = (entry.temperature_mean < 0 ? '-' : (entry.temperature_mean - 273).toFixed(1));
+	row.children[j++].innerHTML = (entry.temperature_high === null ? '-' : (entry.temperature_high - 273).toFixed(1));
+	row.children[j++].innerHTML = (entry.temperature_mean === null ? '-' : (entry.temperature_mean - 273).toFixed(1));
+	row.children[j++].innerHTML = (entry.temperature_low === null ? '-' : (entry.temperature_low - 273).toFixed(1));
+	row.children[j++].innerHTML = (entry.albedo < 0 ? '-' : entry.albedo.toFixed(2));
 	row.children[j++].innerHTML = entry.getTotalOrbit().toFixed(2) + (entry.orbit_retrograde ? 'R' : '');
 	row.children[j++].innerHTML = (is_moon ? 'PD' : format(entry.orbit_au, 3));
 	row.children[j++].innerHTML = format(entry.orbit_eccentricity, 3);
