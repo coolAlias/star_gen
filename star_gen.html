@@ -479,6 +479,8 @@
 						<th>Diversity</th>
 						<th>Compatibility</th>
 						<th>Sophonts</th>
+						<th>Greenhouse Factor</th>
+						<th>Surface Distribution</th>
 					</tr>
 				</thead>
 				<tbody id="main_world_tbl_entries">
@@ -487,6 +489,8 @@
 			<template id="main_world_row_template">
 				<tr>
 					<td class="right"></td>
+					<td></td>
+					<td></td>
 					<td></td>
 					<td></td>
 					<td></td>
@@ -7812,6 +7816,8 @@ function displayMainWorldResults(flagger, n_stellar = 1)
 			row.children[j++].innerHTML = toHexCode(entry.biodiversity);
 			row.children[j++].innerHTML = toHexCode(entry.biocompatibility);
 			row.children[j++].innerHTML = (entry.sophont_presence < 0 ? 'None' : (entry.sophont_presence > 0 ? 'Living' : 'Extinct'));
+			row.children[j++].innerHTML = entry.atmosphere.greenhouse_factor.toFixed(3);
+			row.children[j++].innerHTML = toHexCode(entry.surface_distribution);
 			body.appendChild(row);
 		});
 	}
