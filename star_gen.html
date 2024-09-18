@@ -280,6 +280,9 @@
 					<div class="input_container">
 						<label for="bio_all"><input id="bio_all" name="bio_all" type="checkbox" /> Planets: Life - Check Every World</label>
 					</div>
+					<div class="input_container">
+						<label for="sub_moons"><input id="sub_moons" name="sub_moons" type="checkbox" /> Display Moons under Host Planet</label>
+					</div>
 				</div>
 				<p class="show-options"><a href="#" onclick="return toggleShowOptions(event, this, 'options_stellar')">Show More</a></p>
 			</div>
@@ -2529,7 +2532,7 @@ class Moon extends World
 	getDesignation(n_stars = 1)
 	{
 		const suffix = (this.significant ? String.fromCharCode(this.index + 96) : this.index);
-		return this.host.getDesignation(n_stars) + ' ' + suffix;
+		return (n_stars > 0 ? this.host.getDesignation(n_stars) + ' ' : '') + suffix;
 	}
 
 	/**
@@ -7337,17 +7340,26 @@ function displayStarSystem(system, data)
 	const s_temp = document.getElementById('star_tbl_template');
 	const p_body = document.getElementById('planet_tbl_entries');
 	const p_temp = document.getElementById('planet_tbl_template');
+	const sub_moons = data.has('sub_moons');
 	s_body.replaceChildren();
 	p_body.replaceChildren();
 	system.star_groups.forEach(group => {
 		addStarTableRow(group, s_body, s_temp, system.n_stellar);
-		group.bodies.forEach(body => addPlanetTableRow(body, p_body, p_temp, system.n_stellar));
-	});
-	system.star_groups.forEach(group => {
 		group.bodies.forEach(body => {
-			body.bodies.forEach(moon => addPlanetTableRow(moon, p_body, p_temp, system.n_stellar, true));
+			addPlanetTableRow(body, p_body, p_temp, system.n_stellar);
+			if (sub_moons) {
+				body.bodies.forEach(moon => addPlanetTableRow(moon, p_body, p_temp, system.n_stellar, true, sub_moons));
+			}
 		});
 	});
+	if (!sub_moons) {
+		system.star_groups.forEach(group => {
+			group.bodies.forEach(body => {
+				body.bodies.forEach(moon => addPlanetTableRow(moon, p_body, p_temp, system.n_stellar, true, sub_moons));
+				
+			});
+		});
+	}
 	const basic_temp = data.has('basic_temp');
 	document.querySelectorAll('.toggle-basic_temp').forEach((entry) => {
 		if (basic_temp) {
@@ -7398,7 +7410,7 @@ function addStarTableRow(entry, body, template, n_stellar = 1)
 	body.appendChild(row);
 }
 
-function addPlanetTableRow(entry, body, template, n_stellar = 1, is_moon = false)
+function addPlanetTableRow(entry, body, template, n_stellar = 1, is_moon = false, sub_moons = false)
 {
 	const clone = template.content.cloneNode(true);
 	const row = clone.querySelector('tr');
@@ -7406,8 +7418,9 @@ function addPlanetTableRow(entry, body, template, n_stellar = 1, is_moon = false
 	const escape = entry.getEscapeVelocity();
 	const mass = entry.getTotalMass();
 	let j = 0;
-	row.children[j++].innerHTML = entry.getHostStar().getDesignation(n_stellar);
-	row.children[j++].innerHTML = entry.getDesignation(0);
+	row.children[j++].innerHTML = (is_moon && sub_moons ? '' : entry.getHostStar().getDesignation(n_stellar));
+	if (is_moon && sub_moons) row.children[j].classList.add('right');
+	row.children[j++].innerHTML = entry.getDesignation(is_moon && sub_moons ? 0 : 1);
 	row.children[j++].innerHTML = (mass > 0 ? format(entry.getTotalMass(), 3) : '-');
 	row.children[j++].innerHTML = (diameter > 0 ? round(diameter, 3) + (entry.type === PLANET_GAS ? '&CirclePlus;' : 'km') : '-');
 	row.children[j++].innerHTML = (entry.density > 0 ? round(entry.density, 3) : '-');
@@ -7475,7 +7488,7 @@ function displayMainWorldResults(flagger, n_stellar = 1)
 			let j = 0;
 			row.children[j++].innerHTML = entry.main_world_rating;
 			row.children[j++].innerHTML = entry.getHostStar().getDesignation(n_stellar);
-			row.children[j++].innerHTML = entry.getDesignation(0);
+			row.children[j++].innerHTML = entry.getDesignation(1);
 			row.children[j++].innerHTML = entry.getProfileShort();
 			row.children[j++].innerHTML = (entry.isInHzco() ? 'Y' : 'N');
 			row.children[j++].innerHTML = toHexCode(entry.habitability);
