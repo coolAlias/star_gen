@@ -36,6 +36,8 @@ Worlds with an Atmosphere code of 4-9 will be placed around an HZCO if possible.
 
 ## Standard Options
 
+### Star / System Options
+
 **Star Type Distribution** Use "Traditional Traveller" for a more varied universe, or "Realistic" to include more Type M stars.
 
 **Primary Star: Main-Sequence Only** Uncheck this to allow Brown Dwarfs and other **Unusual** or **Peculiar** results for the Primary Star.
@@ -58,27 +60,33 @@ Worlds with an Atmosphere code of 4-9 will be placed around an HZCO if possible.
 
 **Enable Orbital Eccentricity** Unchecking this option results in every star (and planet) having a perfectly circular orbit.
 
-**Secondary Giant: if > Primary Giant** Options for handling the rare cases when a Secondary Giant would become more massive than the Primary Giant when attempting to make it cooler.
+**Age, Small Stars: Increase Precision** Determine the age of small stars to within 1/10 of a Gyr of precision instead of only whole Gyrs.
+
+**Age, Large Stars: Use 1D100/100** Uncheck this to use the more cumbersome ((1D-1)+(1D/6))/6 roll to determine the portion of lifespan experienced using linear variance.
+
+**Secondary Giant bigger than Primary Giant** Options for handling the rare cases when a Secondary Giant would become more massive than the Primary Giant when attempting to make it cooler.
 
 - Use Twin Method: Change the Secondary to a Twin of the Primary
 
 - Change to Class V: Change the Secondary to Class V
 
+### Planet Options
+
 **HZCO Fudge** Amount of leeway, in Orbit#s from 0.00 to 1.00, when determining if an HZCO is considered to be valid, i.e. within the Min and Max Allowed Orbit#s of a star.
 
 **Main World Candidate Threshold** Value from 0 to 1, where any world scoring in the top n percent of will be flagged as a Main World Candidate. For example, for a value of 0.8, if the top-scoring world received 100 points, any world that received 81+ would be flagged as a potential main world.
 
-**Planets: Cumulative Orbital Variance** If checked, each planetary orbit will be calculated from the previous orbit, rather than from a fixed value of one spread per planet.
+**Cumulative Orbital Variance** If checked, each planetary orbit will be calculated from the previous orbit, rather than from a fixed value of one spread per planet.
 
-**Planets: Per-Star Baseline Numbers** Determine the Baseline Number, Baseline Orbit#, and Spread for each star separately; the primary star groups (i.e. A, AB, ABC, and ABCD) always use the system-wide values.
+**Per-Star Baseline Numbers** Determine the Baseline Number, Baseline Orbit#, and Spread for each star separately; the primary star groups (i.e. A, AB, ABC, and ABCD) always use the system-wide values.
 
-**Planets: Per-Star Empty Orbits** Roll for empty orbits for each star separately instead of for the star system as a whole.
+**Per-Star Empty Orbits** Roll for empty orbits for each star separately instead of for the star system as a whole.
 
-**Planets: Temperature - Basic Mean Only** Determine the Mean Temperature using only the basic formula, and do not calculate the High or Low Temperature.
+**Temperature: Basic Mean Only** Determine the Mean Temperature using only the basic formula, and do not calculate the High or Low Temperature.
 
-**Planets: Temperature - Flat Roll Beyond HZCO** If checked, worlds outside the HZCO will use a flat 7 + DMs to determine their initial temperature range.
+**Temperature: Flat Roll Beyond HZCO** If checked, worlds outside the HZCO will use a flat 7 + DMs to determine their initial temperature range.
 
-**Planets: Life - Check Every World** By default, only worlds within the HZCO or pre-determined Main Worlds are checked for native lifeforms. Enable this option to check every world.
+**Life: Check Every World** By default, only worlds within the HZCO or pre-determined Main Worlds are checked for native lifeforms. Enable this option to check every world.
 
 ## Notes
 
