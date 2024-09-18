@@ -1520,6 +1520,7 @@ class OrbitingBody
 		this.orbit_exclusion_zone = 0;
 		this.orbit_inclination = 0;
 		this.orbit_lagrange = 0;
+		this.orbit_lock = 0;
 		this.orbit_major_min = 0;
 		this.orbit_major_max = 0;
 		this.orbit_parent_index = null;
@@ -1641,6 +1642,7 @@ class AbstractStar extends OrbitingBody
 	{
 		super(null);
 		this.hzco = 0;
+		this.n_stars = 1;
 		this.anomalous = [];
 	}
 
@@ -1880,9 +1882,11 @@ class StarGroup extends AbstractStar
 		this.primary = bodies[0].primary;
 		this.designation = '';
 		this.luminosity = 0;
+		this.n_stars = 0;
 		bodies.forEach(body => {
 			this.designation += body.getDesignationPrimary();
 			this.mass += body.getOrbitalMass();
+			this.n_stars += body.n_stars;
 			this.luminosity += body.getTotalLuminosity();
 		});
 		const last = bodies[bodies.length - 1];
@@ -2249,6 +2253,8 @@ class World extends OrbitingBody
 		let desc = [];
 		if (this.isInHzco()) desc.push('HZ');
 		if (this.orbit_inclination > 0) desc.push('Inclined ' + this.orbit_inclination + '°');
+		if (this.orbit_lock === 1) desc.push('1:1 Tidal Lock');
+		if (this.orbit_lock === 2) desc.push('3:2 Tidal Lock');
 		if (this.habitability > 0) desc.push('HR:' + toHexCode(this.habitability));
 		desc.push(this.getTypeName());
 		if (this.type === PLANET_ROCK || this.type === PLANET_MOON) {
@@ -4250,6 +4256,13 @@ class StarSystemFactory extends AbstractFactory
 					const p_mass = body.getTotalMass() * TERRA_MASS_TO_SOL;
 					body.orbit_period = Math.sqrt(Math.pow(body.orbit_au, 3) / (p_mass + body.host.getOrbitalMass()));
 					this.world_factory.genRotationTraits(system, body);
+					// Special Case: 1:1 lock attenuates eccentricity; reroll with DM-2 and use the lower value
+					if (body.orbit_lock === 1 && body.orbit_eccentricity > 0.1) {
+						const ecc_lock_body = this.genEccentricity(ecc_world - 2, '1:1 Tidal Lock: Eccentricity');
+						body.orbit_eccentricity = Math.min(ecc_lock_body, body.orbit_eccentricity);
+						this.calculateOrbitalCharacteristics(body);
+						this.flushHistory(body);
+					}
 					this.world_factory.genTemperatureExtremes(system, body);
 					this.world_factory.genTerrestrialLifeTraits(system, body);
 					// Determine Hill Sphere and Moon Orbit Range
@@ -4263,6 +4276,12 @@ class StarSystemFactory extends AbstractFactory
 						moon.orbit_retrograde = (this.roll(2, 6, ecc_moon, 'Moon Orbit Direction') > 9);
 						this.flushHistory(moon);
 						this.world_factory.genRotationTraits(system, moon);
+						// Special Case: 1:1 lock attenuates eccentricity; reroll with DM-2 and use the lower value
+						if (moon.orbit_lock === 1 && moon.orbit_eccentricity > 0.1) {
+							const ecc_lock_moon = this.genEccentricity(ecc_world + ecc_moon - 2, '1:1 Tidal Lock: Eccentricity');
+							moon.orbit_eccentricity = Math.min(ecc_lock_moon, moon.orbit_eccentricity);
+							this.flushHistory(moon);
+						}
 						this.world_factory.genTemperatureExtremes(system, moon);
 						this.world_factory.genTerrestrialLifeTraits(system, moon);
 					});
@@ -5369,17 +5388,17 @@ class WorldFactory extends AbstractFactory
 		return albedo;
 	}
 
-	genAxialTilt(world)
+	genAxialTilt(world, n = 2)
 	{
-		const tilt = this.genAxialTiltBase(world);
+		const tilt = this.genAxialTiltBase(world, n);
 		const min = (10 * this.roll(1, 6, -1, 'Axial Tilt: +Minutes')) + this.roll(1, 10, -1, 'Axial Tilt: +Minutes');
 		const sec = (10 * this.roll(1, 6, -1, 'Axial Tilt: +Seconds')) + this.roll(1, 10, -1, 'Axial Tilt: +Seconds');
 		return (tilt > 180 ? 180 - (tilt - 180) : tilt) + (min / 60) + (sec / 3600);
 	}
 
-	genAxialTiltBase(world)
+	genAxialTiltBase(world, n = 2)
 	{
-		const first = this.roll(2, 6, 0, 'Axial Tilt Range');
+		const first = this.roll(n, 6, 0, 'Axial Tilt Range');
 		const roll = this.roll(1, 6, 0, 'Axial Tilt Value');
 		if (first < 5) return (roll - 1) / 50;
 		if (first < 6) return roll / 5;
@@ -5465,6 +5484,7 @@ class WorldFactory extends AbstractFactory
 		world.period_solar_year = this.genPeriodSolarDaysPerYear(world);
 		world.period_solar = this.genPeriodSolar(world);
 		world.obliquity = this.genAxialTilt(world);
+		this.genTidalLock(system, world);
 		this.flushHistory(world);
 	}
 
@@ -5493,6 +5513,7 @@ class WorldFactory extends AbstractFactory
 		// Special Case: Treat sidereal day as negative for Axial Tilts greater than 90 degrees
 		const sidereal = (world.obliquity > 90 ? -world.period_sidereal : world.period_sidereal);
 		const year_length = 8766 * world.orbit_period;
+		log('Orbit Period: ' + world.orbit_period + ', Sidereal Period: ' + world.period_sidereal + ', Year Length: ' + year_length + ', Axial Tilt: ' + world.obliquity);
 		return (year_length / sidereal) - 1;
 	}
 
@@ -5555,7 +5576,7 @@ class WorldFactory extends AbstractFactory
 		if (world.type !== PLANET_ROCK && world.type !== PLANET_MOON) return;
 		// Variance Factor = Axial Tilt Factor + Rotation Factor + Geographic Factor, clamped between 0.0 and 1.0
 		const f_tilt = Math.abs(Math.sin(world.obliquity * Math.PI / 180));
-		const f_period = (world.period_solar > 2500
+		const f_period = (world.period_solar > 2500 || (world.orbit_lock === 1 && world.period_solar === null)
 			? 1.0
 			: Math.sqrt(Math.abs(world.period_solar)) / 50);
 		const geo_mod = (world.surface_distribution < 2 ? -0.1 : (world.surface_distribution > 8 ? 0.1 : 0));
@@ -5647,6 +5668,270 @@ class WorldFactory extends AbstractFactory
 			if (outer_out > 0) dm -= Math.round(2 * outer_out);
 		}
 		return dm;
+	}
+
+	genTidalLock(system, world)
+	{
+		// Moons are checked for tidal lock by their host planet
+		if (!(world.host instanceof AbstractStar)) return;
+		// Tidal Lock is checked only for Terrestrial worlds of Size 1+
+		if (world.type !== PLANET_ROCK || world.size < 1) return;
+		// Check the planet's moon(s) first for tidal lock to the planet
+		const tidal_dm = this.getTidalLockMod(system, world);
+		this.genTidalLockMoons(world, tidal_dm);
+		// Check the planet for tidal lock against any tidally-locked moons and/or its host star(s)
+		this.genTidalLockPlanet(world, tidal_dm);
+	}
+
+	applyTidalLock(world, roll, locked_body = null)
+	{
+		// Retrograde rotation may invert axial tilt
+		if (roll > 8 && roll < 11 && world.obliquity < 90) {
+			world.obliquity = 180 - world.obliquity;
+		}
+		// 3:2 and 1:1 locks attenuate axial tilt
+		if (roll > 10 && world.obliquity > 3) {
+			world.obliquity = 0.1 * this.roll(2, 6, -2, 'Tidal Lock: Axial Tilt');
+		}
+		// 1:1 lock attenuates eccentricity; reroll with DM-2 and use the lower value
+		if (roll > 11 && world.orbit_eccentricity > 0.1) {
+			// Handled externally by StarSystemFactory since that's where the #genEccentricity method is...
+		}
+		// 1:1 lock rerolls axial tilt, rolling only 1D instead of 2D
+		if (roll > 11) {
+			world.obliquity = this.genAxialTilt(world, 1);
+		}
+		// Tidal Lock value is 0 for none, 1 for 1:1, and 2 for 3:2
+		world.orbit_lock = (roll > 11 ? 1 : (roll < 11 ? 0 : 2));
+		// Except for planets locked to their star(s), recalculate the world's solar day and year length
+		if (world.orbit_lock > 0 && locked_body instanceof AbstractStar) {
+			log('Tidally Locked to Star - undefined solar year for world ' + world.getDesignation());
+			world.period_solar_year = null;
+			world.period_solar = null;
+		} else if (roll > 2) {
+			log('Recalculating solar year for world ' + world.getDesignation() + '; Tidal Lock Roll: ' + roll + ', Solar Year: ' + world.period_solar + ', Days / Year: ' + world.period_solar_year);
+			world.period_solar_year = this.genPeriodSolarDaysPerYear(world);
+			world.period_solar = this.genPeriodSolar(world);
+			log('New values are Solar Year: ' + world.period_solar + ', Days / Year: ' + world.period_solar_year);
+		}
+	}
+
+	genTidalLockMoons(world, tidal_dm)
+	{
+		world.bodies.forEach(moon => {
+			const dm = tidal_dm + this.getTidalLockModPlanet(moon);
+			let roll = 0;
+			if (dm < -9) {
+				// No lock for DM-10 or less
+			} else if (dm > 9) {
+				// Automatic 1:1 lock for DM+10 or higher, subject to the special case as though it were the result of a roll
+				roll = 12;
+			} else {
+				roll = this.roll(2, 6, dm, 'Tidal Lock');
+			}
+			// Special Case: For 1:1 lock, roll 2D - on a 12, reroll for tidal lock with no DMs
+			let sidereal = null;
+			if (12 === this.roll(2, 6, 0, '1:1 Tidal Lock*')) {
+				roll = this.roll(2, 6, 0, 'Tidal Lock');
+				sidereal = this.getTidalLockPeriod(moon, moon.orbit_period, roll);
+				// Special Case: If the resulting tidal lock effect causes the moon's sidereal day to exceed its orbital period, it instead remains in a 1:1 lock
+				if (sidereal > moon.period_sidereal) {
+					roll = 12;
+					sidereal = null;
+				}
+			}
+			// Update the moon's sidereal period
+			moon.period_sidereal = (sidereal === null
+				? this.getTidalLockPeriod(moon, moon.orbit_period, roll)
+				: sidereal);
+			// Apply other lock effects
+			this.applyTidalLock(moon, roll);
+			this.flushHistory(moon);
+		});
+	}
+
+	genTidalLockPlanet(world, tidal_dm)
+	{
+		// Exclude Planetary Rings from the DM-2 per moon modifier (Size S do count, though)
+		const n_moons = world.bodies.filter(moon => moon.size !== 0).length;
+		// Planets may lock to one of either their star(s) or any tidally-locked moon(s)
+		world.bodies.forEach(moon => {
+			moon.orbit_lock_dm = (moon.orbit_lock > 0
+				? tidal_dm + this.getTidalLockModMoon(world, moon, n_moons)
+				: -10);
+		});
+		const moons = world.bodies
+			.filter(moon => moon.orbit_lock_dm > -10)
+			.sort((a, b) => a.orbit_lock_dm - b.orbit_lock_dm);
+		// Special Case: If there are two moons that are tied, check the closest one first
+		let moon_a = (moons.length > 0 ? moons[0] : null);
+		let moon_b = null;
+		if (moons.length > 1 && moons[0].orbit_lock_dm < 10 && moons[1].orbit_lock_dm === moons[0].orbit_lock_dm) {
+			moon_a = (moons[0].orbit > moons[1].orbit ? moons[1] : moons[0]);
+			moon_b = (moons[0].orbit > moons[1].orbit ? moons[0] : moons[1]);
+		}
+		// Check moons first, all else being equal
+		let locked_body = null;
+		let locked_roll = 0;
+		const star_dm = tidal_dm + this.getTidalLockModStar(world);
+		if (moon_a !== null && moon_a.orbit_lock_dm >= star_dm) {
+			// Automatic 1:1 lock for DM+10 or higher, subject to the special case as though it were the result of a roll
+			locked_body = moon_a;
+			locked_roll = (moon_a.orbit_lock_dm < 10
+				? this.roll(2, 6, moon_a.orbit_lock_dm, 'Tidal Lock: ' + moon_a.getDesignation(0))
+				: 12);
+			// Moon B only set if A had DM+9 or less, so B must roll
+			const roll_b = (locked_roll < 11 && moon_b !== null
+				? this.roll(2, 6, moon_b.orbit_lock_dm, 'Tidal Lock: ' + moon_b.getDesignation(0))
+				: -10);
+			if (roll_b > locked_roll) {
+				locked_roll = roll_b;
+				locked_body = moon_b;
+			}
+		}
+		// Finally, check the star if no lock was found
+		if (locked_roll < 11 && star_dm > -10) {
+			// Automatic 1:1 lock for DM+10 or higher, subject to the special case as though it were the result of a roll
+			const roll_c = (star_dm < 10 ? this.roll(2, 6, star_dm, 'Tidal Lock: Star(s)') : 12);
+			if (roll_c > locked_roll) {
+				locked_roll = roll_c;
+				locked_body = world.host;
+			}
+		}
+		// Special Case: For 1:1 lock, roll 2D - on a 12, reroll for tidal lock with no DMs
+		if (locked_roll > 11 && 12 === this.roll(2, 6, 0, '1:1 Tidal Lock*')) {
+			locked_roll = this.roll(2, 6, 0, 'Tidal Lock');
+		}
+		// Update the worlds's sidereal period
+		const orbit_period = (locked_body instanceof AbstractStar ? world.orbit_period : locked_body.orbit_period);
+		world.period_sidereal = this.getTidalLockPeriod(world, orbit_period, locked_roll);
+		// Apply other lock effects
+		this.applyTidalLock(world, locked_roll, locked_body);
+		this.flushHistory(world);
+	}
+
+	/**
+	 * @return int DM common to all types of Tidal Lock
+	 */
+	getTidalLockMod(system, world)
+	{
+		let dm = 0;
+		// DM+1 for each 3 Sizes of Size 1+ worlds, rounded up
+		if (world.size > 0) dm += Math.ceil(world.size / 3);
+		// DM-1 for each 0.1 of Eccentricity, rounded down, only if Eccentricity > 0.1
+		if (world.orbit_eccentricity > 0.1) dm -= Math.floor(10 * world.orbit_eccentricity);
+		// DM-2 for Axial Tilt above 30
+		if (world.obliquity > 30) dm -= 2;
+		// DM-4 (additional) for Axial Tilt between 60 and 120
+		if (world.obliquity >= 60 && world.obliquity <= 120) dm -= 4;
+		// DM-4 (additional) for Axial Tilt between 80 and 100
+		if (world.obliquity >= 80 && world.obliquity <= 100) dm -= 4;
+		// DM-2 for Atmospheric pressure above 2.5 bar
+		if (world.atmosphere.bar > 2.5) dm -= 2;
+		// DM-2 for system age less than 1 Gyr
+		if (system.age < 1) dm -= 2;
+		// DM+2 for system age between 5 and 10 Gyrs
+		if (system.age >= 5 && system.age <= 10) dm += 2;
+		// DM+4 for system age greater than 10 Gyrs
+		if (system.age > 10) dm += 4;
+		return dm;
+	}
+
+	/**
+	 * @return int DM for a planet's lock to one of its moons
+	 */
+	getTidalLockModMoon(world, moon, n_moons)
+	{
+		let dm = -10;
+		// DM+ Moon Size
+		if (moon.size > 0) dm += moon.size;
+		// DM+5 or less if moon orbit less than 5 PD
+		if (moon.orbit < 5) dm += 5 + Math.ceil(5 * (5 - moon.orbit));
+		// DM+4 if moon orbit between 5 and 10
+		if (moon.orbit >= 5 && moon.orbit < 10) dm += 4;
+		// DM+2 if moon orbit between 10 and 20
+		if (moon.orbit >= 10 && moon.orbit < 20) dm += 2;
+		// DM+1 if moon orbit between 20 and 40
+		if (moon.orbit >= 20 && moon.orbit < 40) dm += 1;
+		// DM-6 if moon orbit greater than 60
+		if (moon.orbit > 60) dm -= 6;
+		// DM-2 per moon beyond the first
+		if (n_moons > 0) dm -= 2 * n_moons;
+		return dm;
+	}
+
+	/**
+	 * @return int DM for a moon's lock to its host planet
+	 */
+	getTidalLockModPlanet(moon)
+	{
+		let dm = 6;
+		// DM-1 for each 20 PD
+		if (moon.orbit > 20) dm -= Math.floor(moon.orbit / 20);
+		// DM-2 for moons in a retrograde orbit
+		if (moon.orbit_retrograde) dm -= 2;
+		const mass = moon.host.getTotalMass();
+		// DM+2 for host planet mass between 1 and 10
+		if (mass > 1 && mass <= 10) dm += 2;
+		// DM+4 for host planet mass between 10 and 100
+		if (mass > 10 && mass <= 100) dm += 4;
+		// DM+6 for host planet mass between 100 and 1000
+		if (mass > 100 && mass <= 1000) dm += 6;
+		// DM+8 for host planet mass greater than 1000
+		if (mass > 1000) dm += 8;
+		return dm;
+	}
+
+	/**
+	 * @return int DM for a planet's lock to its host star(s)
+	 */
+	getTidalLockModStar(world)
+	{
+		let dm = -4;
+		const orbit = world.getHzcoOrbit();
+		// DM+4 for Orbit# less than 1, plus 1 per 0.1 Orbit# below 1, rounded down
+		if (orbit < 1) dm += 4 + Math.floor(10 * (1 - (orbit - Math.floor(orbit))));
+		// DM+4 for Orbit# between 1 and 2
+		if (orbit >= 1 && orbit < 2) dm += 4;
+		// DM+1 for Orbit# between 2 and 3
+		if (orbit >= 2 && orbit <= 3) dm += 1;
+		// DM-2 per Orbit# (rounded down) for Orbit# greater than 3
+		if (orbit > 3) dm += 2 * Math.floor(orbit);
+		const host = world.getHostStar();
+		const mass = host.getTotalMass();
+		// DM-2 for star mass(es) less than 0.5
+		if (mass < 0.5) dm -= 2;
+		// DM-1 for star mass(es) between 0.5 and 1.0
+		if (mass >= 0.5 && mass < 1) dm -= 1;
+		// DM+1 for star mass(es) between 2 and 5
+		if (mass > 2 && mass <= 5) dm += 1;
+		// DM+2 for star mass(es) greater than 5
+		if (mass > 5) dm += 2;
+		// DM-1 for each star orbited beyond the first
+		if (host.n_stars > 1) dm -= (host.n_stars - 1);
+		// DM-1 per Size of each moon of Size 1+
+		dm += world.bodies.reduce((n, moon) => n + Math.max(0, moon.size), 0);
+		return dm;
+	}
+
+	/**
+	 * @return float The new length of the world's sidereal day based on the Tidal Lock roll
+	 */
+	getTidalLockPeriod(world, orbit_period, roll)
+	{
+		if (roll < 3) return world.period_sidereal;
+		if (roll < 4) return world.period_sidereal * 1.5;
+		if (roll < 5) return world.period_sidereal * 2;
+		if (roll < 6) return world.period_sidereal * 3;
+		if (roll < 7) return world.period_sidereal * 5;
+		if (roll < 8) return 5 * 24 * this.roll(1, 6, 0, 'Tidal Lock Prograde Rotation');
+		if (roll < 9) return 20 * 24 * this.roll(1, 6, 0, 'Tidal Lock Prograde Rotation');
+		if (roll < 10) return 10 * 24 * this.roll(1, 6, 0, 'Tidal Lock Retrograde Rotation');
+		if (roll < 11) return 50 * 24 * this.roll(1, 6, 0, 'Tidal Lock Retrograde Rotation');
+		// 3:2 lock
+		if (roll < 12) return 3 * orbit_period / 2;
+		// 1:1 lock
+		return orbit_period;
 	}
 
 	genTraits(system, world)
