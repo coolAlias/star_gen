@@ -6425,10 +6425,13 @@ class WorldFactory extends AbstractFactory
 		let dm = world.atmosphere.type;
 		// DM-4 for atmosphere types 0, 1, or A+
 		if (world.atmosphere.type < 2 || world.atmosphere.type > 9) dm -= 4;
-		// DM-2 for Hot temperatures
-		if (!greenhouse && world.temperature > 9 && world.temperature < 12) dm -= 2;
-		// DM-6 for Boiling temperatures or any suffering from a Runaway Greenhouse Effect
-		if (greenhouse || world.temperature > 11) dm -= 6;
+		// Special Case: Very Dense (D) and the Panthalassic subtype (7) of Unusual (F) atmospheres do not apply any DMs for temperature
+		if (world.atmosphere.type !== 13 && (world.atmosphere.type !== 15 || (world.atmosphere.subtype !== 7 && world.atmosphere.subtype_b !== 7))) {
+			// DM-2 for Hot temperatures
+			if (!greenhouse && world.temperature > 9 && world.temperature < 12) dm -= 2;
+			// DM-6 for Boiling temperatures or any suffering from a Runaway Greenhouse Effect
+			if (greenhouse || world.temperature > 11) dm -= 6;
+		}
 		return clamp(this.roll(2, 6, dm - 7, 'Hydrographics Code'), 0, 10);
 	}
 
