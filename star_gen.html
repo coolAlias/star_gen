@@ -278,6 +278,9 @@
 						<label for="hill_moon_qty"><input id="hill_moon_qty" name="hill_moon_qty" type="checkbox" checked /> Planets: Use Hill Sphere for DM-1 per die to Moon Qty</label>
 					</div>
 					<div class="input_container">
+						<label for="var_hr"><input id="var_hr" name="var_hr" type="checkbox" /> Planets: Add D3-2 as DM to Habitability Rating</label>
+					</div>
+					<div class="input_container">
 						<label for="bio_all"><input id="bio_all" name="bio_all" type="checkbox" /> Planets: Life - Check Every World</label>
 					</div>
 					<div class="input_container">
@@ -5323,6 +5326,7 @@ class WorldFactory extends AbstractFactory
 	 *   @option bool basic_temp True to use the Basic Temperature formula to calculate Mean Temperature
 	 *   @option bool flat_temp True to use 7+DMs when determining the initial temperature roll of worlds outside the HZ
 	 *   @option bool hill_moon_qty True to use only the Hill Sphere when determining DM-1 per die for Significant Moon Qty
+	 *   @option bool var_hr True to enable optional variation in world habitability rating (adds D3-2)
 	 *   @option bool var_mass True to enable variations in world mass
 	 *   @option bool var_orbit True to enable variations in moon orbit#s
 	 *   @option bool var_size True to enable variations in world diameter
@@ -5337,6 +5341,7 @@ class WorldFactory extends AbstractFactory
 		this.hill_moon_qty = options.has('hill_moon_qty');
 		this.enable_basic_temp = options.has('basic_temp');
 		this.enable_flat_temp = options.has('flat_temp');
+		this.enable_var_habitability = options.has('var_hr');
 		this.enable_var_mass = options.has('var_mass');
 		this.enable_var_orbit = options.has('var_orbit');
 		this.enable_var_size = options.has('var_size');
@@ -6170,7 +6175,6 @@ class WorldFactory extends AbstractFactory
 		}
 		world.hydrographics_percentage = this.genHydrographicsPercentage(world);
 		world.surface_distribution = this.roll(2, 6, -2, 'Surface Distribution');
-		world.habitability = clamp(this.genHabitabilityRating(world), 0, 12);
 		world.albedo = this.genAlbedo(world);
 		world.temperature_mean = (this.enable_basic_temp
 			? this.genTemperatureMeanEstimate(world)
@@ -6192,6 +6196,7 @@ class WorldFactory extends AbstractFactory
 		world.biocompatibility = this.genBiocompatibility(system, world);
 		world.resource_rating = clamp(this.genTerrestrialResourceRating(world), 2, 12);
 		world.sophont_presence = this.genSophontPresence(system, world);
+		world.habitability = clamp(this.genHabitabilityRating(world), 0, 12);
 		this.flushHistory(world);
 	}
 
@@ -6424,8 +6429,12 @@ class WorldFactory extends AbstractFactory
 		const size = this.getHabitabilitySizeMod(world);
 		const grav = this.getHabitabilityGravMod(world, size !== 0);
 		const temp = this.getHabitabilityTempMod(world);
-		log('World Habitability mods for ' + world.getDesignation() + ': Atmo = ' + signed(atmo) + ', Grav = ' + signed(grav) + ', Hydro = ' + signed(hydro) + ', Size = ' + signed(size) + ', Temp = ' + signed(temp));
-		return 10 + atmo + grav + hydro + size + temp;
+		// DM-2 for solar tidally locked (1:1) worlds
+		const lock = (world.orbit_lock === 1 && world.period_solar === null ? -2 : 0);
+		// Optional +/-1 to simulate unaccounted-for variables that may mitigate or worsen conditions
+		const wild = (this.enable_var_habitability ? this.roll(1, 3, -2, 'Habitability Rating Variance') : 0);
+		log('World Habitability mods for ' + world.getDesignation() + ': Atmo = ' + signed(atmo) + ', Grav = ' + signed(grav) + ', Hydro = ' + signed(hydro) + ', Size = ' + signed(size) + ', Temp = ' + signed(temp) + ', 1:1 Lock = ' + signed(lock) + ', Variance: ' + signed(wild));
+		return 10 + atmo + grav + hydro + lock + size + temp + wild;
 	}
 
 	getHabitabilityAtmoMod(atmosphere)
