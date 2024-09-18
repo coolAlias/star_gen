@@ -6748,8 +6748,10 @@ class WorldFactory extends AbstractFactory
 			}
 			// Reorder and re-index moons based on their actual orbit#s
 			world.bodies.sort((a, b) => a.getTotalOrbit() - b.getTotalOrbit());
+			let n_rings = 1;
+			let n_moons = 1;
 			for (let j = 0; j < world.bodies.length; j++) {
-				world.bodies[j].index = j + 1;
+				world.bodies[j].index = (world.bodies[j].significant ? n_moons++ : n_rings++);
 			}
 		}
 	}
