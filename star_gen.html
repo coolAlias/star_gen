@@ -5744,7 +5744,9 @@ class WorldFactory extends AbstractFactory
 
 	genTidalLockMoons(world, tidal_dm)
 	{
-		world.bodies.forEach(moon => {
+		// Special Case: Planetary Rings cannot be tidally locked
+		const moons = world.bodies.filter(moon => moon.size !== 0);
+		moons.forEach(moon => {
 			const dm = tidal_dm + this.getTidalLockModPlanet(moon);
 			let roll = 0;
 			if (dm < -9) {
