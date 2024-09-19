@@ -5957,9 +5957,9 @@ class WorldFactory extends AbstractFactory
 		if (roll < 10) return 10 * 24 * this.roll(1, 6, 0, 'Tidal Lock Retrograde Rotation');
 		if (roll < 11) return 50 * 24 * this.roll(1, 6, 0, 'Tidal Lock Retrograde Rotation');
 		// 3:2 lock
-		if (roll < 12) return 3 * orbit_period / 2;
+		if (roll < 12) return 8766 * 3 * orbit_period / 2;
 		// 1:1 lock
-		return orbit_period;
+		return 8766 * orbit_period;
 	}
 
 	genTraits(system, world)
