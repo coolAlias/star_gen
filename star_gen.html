@@ -2323,7 +2323,7 @@ class World extends OrbitingBody
 	{
 		const sah = [
 			this.getSizeCode(),
-			(this.atmosphere ? this.atmosphere.code : '0'),
+			(this.atmosphere ? this.atmosphere.getCode() : '0'),
 			toHexCode(this.hydrographics),
 		];
 		return sah.join('');
@@ -2827,7 +2827,6 @@ class Atmosphere
 	{
 		this.type = type;
 		this.type_orig = type;
-		this.code = toHexCode(this.type);
 		this.density = density;
 		this.greenhouse_factor = 0;
 		this.irritant = irritant;
@@ -2838,14 +2837,19 @@ class Atmosphere
 		this.taints = [];
 	}
 
+	getCode()
+	{
+		return toHexCode(this.type);
+	}
+
 	getProfileShort()
 	{
 		// Corrosive, Exotic, Insidious, and Unusual profiles
 		const st = this.getSubtypeProfile();
 		if (st.length > 0) {
-			return this.code + '-' + st + ':' + this.bar.toFixed(3);
+			return this.getCode() + '-' + st + ':' + this.bar.toFixed(3);
 		}
-		return this.code
+		return this.getCode()
 			+ '-' + this.bar.toFixed(3)
 			+ '-' + this.ppo.toFixed(3);
 	}
