@@ -5703,6 +5703,28 @@ class WorldFactory extends AbstractFactory
 		return dm;
 	}
 
+	/**
+	 * @return int World profile temperature value that most closely represents the world's actual mean temperature
+	 */
+	getTemperatureFromMean(world)
+	{
+		if (this.enable_basic_temp) return world.temperature;
+		// Special Case: Off the charts in Frozen territory
+		if (world.temperature_mean < 188) {
+			return 0 - Math.floor((188 - world.temperature_mean) / 5);
+		}
+		// Special Case: Off the charts in Boiling territory
+		if (world.temperature_mean > 388) {
+			return 12 + Math.floor((world.temperature_mean - 388) / 50);
+		}
+		const chart = [188, 198, 218, 238, 263, 278, 283, 288, 293, 298, 313, 338, 388];
+		const diffs = [  5,  10,  20,  20,  25,  15,   5,   5,   5,   5,  15,  25,  50];
+		return chart.findIndex((v, i, arr) => {
+			const t = v + (this.enable_var_temp ? diffs[i] / 2 : 0);
+			return t >= world.temperature_mean;
+		});
+	}
+
 	genTidalLock(system, world)
 	{
 		// Moons are checked for tidal lock by their host planet
@@ -6209,6 +6231,9 @@ class WorldFactory extends AbstractFactory
 		world.temperature_mean = (this.enable_basic_temp
 			? this.genTemperatureMeanEstimate(world)
 			: this.genTemperatureMean(system, world));
+		// Update the world's temperature profile value to match its actual mean temperature
+		log('Recalculating base temperature value of ' + world.temperature + ' for World ' + world.getDesignation(system.n_stellar) + ' based on Mean Temperature of ' + world.temperature_mean.toFixed(1) + 'K (' + (world.temperature_mean - 273).toFixed(1) + ' C)');
+		world.temperature = this.getTemperatureFromMean(world);
 	}
 
 	/**
