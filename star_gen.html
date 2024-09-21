@@ -2044,7 +2044,7 @@ class StarGroup extends AbstractStar
 			this.luminosity += body.getTotalLuminosity();
 		});
 		this.stars = bodies;
-		const last = bodies[bodies.length - 1];
+		const last = (bodies.length === 2 && bodies[0].companion === bodies[1] ? bodies[0] : bodies[bodies.length - 1]);
 		this.orbit = last.getTotalOrbit();
 		this.orbit_au = last.orbit_au;
 		this.orbit_band = last.orbit_band;
