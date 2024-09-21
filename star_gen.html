@@ -7292,6 +7292,8 @@ class AtmosphereFactory extends AbstractFactory
 	shouldCheckForRunawayGreenhouse(system, world)
 	{
 		if (!this.enable_green_check) return false;
+		// Continuation Method: Main World should not check for Runaway Greenhouse Effect
+		if (world.world_profile !== null) return false;
 		// Worlds with atmospheres of < 2 or > F (15) never check for runaway greenhouse effect
 		if (world.atmosphere.type < 2 || world.atmosphere.type > 15) return false;
 		// Hot and Boiling worlds in the HZCO should check
