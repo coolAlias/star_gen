@@ -7682,6 +7682,7 @@ function signed(num)
 
 function getStarSystem(data)
 {
+	log(data);
 	const seed = (data.has('seed') && data.get('seed').length > 0
 		? validateUserSeed(data.get('seed'))
 		: window.crypto.randomUUID().substring(24));
