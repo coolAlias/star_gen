@@ -6927,6 +6927,11 @@ class AtmosphereFactory extends AbstractFactory
 		atmosphere.density = this.genDensity(atmosphere);
 		atmosphere.bar = this.genPressureTotal(atmosphere);
 		atmosphere.ppo = this.genPressureOxygen(system, atmosphere);
+		// Continuation Method: World with breathable atmosphere type of 5, 6, or 8 should not have PPO-related taint
+		if (world.world_profile && [5, 6, 8].includes(atmosphere.type) && (atmosphere.ppo < 0.1 || atmosphere.ppo > 0.5)) {
+			log('Continuation Method: World ' + world.getDesignation(system.n_stellar) + ' atmospheric PPO out of bounds for breathable atmosphere ' + atmosphere.type + '; changing PPO to conform');
+			atmosphere.ppo = clamp(atmosphere.ppo, 0.1, 0.5);
+		}
 		// Special Case: PPO < 0.1 or > 0.5 for supposedly breathable atmosphere type of 5, 6, or 8; change to corresponding Tainted version
 		if ([5, 6, 8].includes(atmosphere.type) && (atmosphere.ppo < 0.1 || atmosphere.ppo > 0.5)) {
 			log('World ' + world.getDesignation(system.n_stellar) + ' atmospheric PPO out of bounds for breathable atmosphere ' + atmosphere.type + '; changing to corresponding Tainted type');
