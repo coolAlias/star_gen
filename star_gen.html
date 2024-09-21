@@ -4528,8 +4528,15 @@ class StarSystemFactory extends AbstractFactory
 					entries[i]['orbit_deviation'] = (this.enable_var_orbit ? 0.1 * this.roll(2, 6, -7, 'Secondary Orbit# Variance: ' + this.bands[i]) : 0);
 					// Minimum total Orbit# is 0.01
 					if ((entries[i]['orbit'] + entries[i]['orbit_deviation']) < 0.01) {
-						log('Enforcing minimum 0.01 Orbit# for ' + this.bands[i] + ' Secondary at Orbit# ' + entries[i]['orbit'] + ' with deviation ' + signed(entries[i]['orbit_deviation']));
+						log('Enforcing minimum 0.01 Orbit# for ' + this.bands[i] + ' Secondary at Orbit# ' + entries[i]['orbit'].toFixed(2) + ' with deviation ' + signed(entries[i]['orbit_deviation']));
 						entries[i]['orbit_deviation'] = -(entries[i]['orbit'] - 0.01);
+					}
+					// Special Case: Near star's Orbit# should generally be at least 0.5 Orbit#s beyond the Primary Companion, if any
+					if (i === 1 && entries[0]['companion'] && entries[i]['orbit'] + entries[i]['orbit_deviation'] < 0.5 + entries[0]['companion_orbit']) {
+						const pc_mod = 0.5 + 0.1 * this.roll(1, 6, -1, 'Secondary Orbit#: ' + this.bands[i] + ', Adjusting for Primary Companion');
+						entries[i]['orbit'] = entries[0]['companion_orbit'] + pc_mod;
+						entries[i]['orbit_deviation'] *= 0.1;
+						log('Primary Companion at Orbit# ' + entries[0]['companion_orbit'].toFixed(2) + ' prevents placing Near Secondary at Orbit# ' + (entries[i]['orbit'] + entries[i]['orbit_deviation']).toFixed(2) + '; moved to Orbit# +' + entries[i]['orbit'].toFixed(2));
 					}
 					ecc_mod_near = (is_older_system && (entries[i]['orbit'] + entries[i]['orbit_deviation']) < 1 ? -1 : 0);
 					entries[i]['orbit_eccentricity'] = this.genEccentricity(n_stars + ecc_mod_star + ecc_mod_near, 'Secondary Orbital Eccentricity: ' + this.bands[i]);
