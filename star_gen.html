@@ -5864,7 +5864,7 @@ class WorldFactory extends AbstractFactory
 			locked_roll = this.roll(2, 6, 0, 'Tidal Lock');
 		}
 		// Update the worlds's sidereal period
-		const orbit_period = (locked_body instanceof AbstractStar ? world.orbit_period : locked_body.orbit_period);
+		const orbit_period = (locked_body === null || locked_body instanceof AbstractStar ? world.orbit_period : locked_body.orbit_period);
 		world.period_sidereal = this.getTidalLockPeriod(world, orbit_period, locked_roll);
 		// Apply other lock effects
 		this.applyTidalLock(world, locked_roll, locked_body);
