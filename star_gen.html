@@ -1901,7 +1901,7 @@ class StarGroup extends AbstractStar
 		bodies.sort((a, b) => {
 			const x = a.getTotalOrbit();
 			const y = b.getTotalOrbit();
-			return (x < y ? -1 : (x > y ? 1 : 0));
+			return x - y;
 		});
 		this.primary = bodies[0].primary;
 		this.designation = '';
