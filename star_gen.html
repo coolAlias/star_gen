@@ -1913,6 +1913,7 @@ class StarGroup extends AbstractStar
 			this.n_stars += body.n_stars;
 			this.luminosity += body.getTotalLuminosity();
 		});
+		this.stars = bodies;
 		const last = bodies[bodies.length - 1];
 		this.orbit = last.getTotalOrbit();
 		this.orbit_au = last.orbit_au;
@@ -4794,7 +4795,7 @@ class StarSystemFactory extends AbstractFactory
 			const p_worlds = Math.ceil((p_group.n_bodies / 10) * this.roll(2, 6, -2, label + ' Baseline Number: invalid HZCO, rolling a random planet # to use as the baseline'));
 			return p_worlds + 1;
 		}
-		const primary = (secondary ? (group instanceof StarGroup ? group.bodies[0] : group) : system.getPrimaryStar());
+		const primary = (secondary ? (group instanceof StarGroup ? group.stars[0] : group) : system.getPrimaryStar());
 		const dm = this.getBaselineNumberMod(system, primary);
 		const n_planets = (this.per_star_baseline && secondary ? group.n_bodies : system.n_planets);
 		const dm_planet = this.getBaselineNumberWorldCountMod(n_planets);
