@@ -481,14 +481,17 @@
 						<th>Sophonts</th>
 						<th>Greenhouse Factor</th>
 						<th>Surface Distribution</th>
+						<th>Trade Codes*</th>
 					</tr>
 				</thead>
 				<tbody id="main_world_tbl_entries">
 				</tbody>
 			</table>
+			<p class="footnote">* Trade codes listed in parentheses depend on to-be-determined social characteristics.</p>
 			<template id="main_world_row_template">
 				<tr>
 					<td class="right"></td>
+					<td></td>
 					<td></td>
 					<td></td>
 					<td></td>
@@ -1487,6 +1490,100 @@ const TAINT_P = 23;
 const TAINT_R = 25;
 const TAINT_S = 26;
 
+const TRADE_CODES = [
+	{
+		'desc': 'Agricultural',
+		'code': 'Ag',
+		'testPhysical': (world) => world.atmosphere !== null && world.atmosphere.type > 3 && world.atmosphere.type < 10 && world.hydrographics > 3 && world.hydrographics < 9,
+		'testSocial': (world) => world.population > 4 && world.population < 8,
+	},{
+		'desc': 'Asteroid',
+		'code': 'As',
+		'testPhysical': (world) => world.size === 0 && world.atmosphere !== null && world.atmosphere.type === 0 && world.hydrographics === 0,
+		'testSocial': (world) => true,
+	},{
+		'desc': 'Barren',
+		'code': 'Ba',
+		'testPhysical': (world) => true,
+		'testSocial': (world) => world.population === 0 && world.government === 0 && world.law === 0,
+	},{
+		'desc': 'Desert',
+		'code': 'De',
+		'testPhysical': (world) =>world.atmosphere !== null && world.atmosphere.type > 1 && world.atmosphere.type < 10 && world.hydrographics === 0,
+		'testSocial': (world) => true,
+	},{
+		'desc': 'Fluid Oceans',
+		'code': 'Fl',
+		'testPhysical': (world) => world.atmosphere !== null && ([10, 11, 12].includes(world.atmosphere.type) || world.atmosphere.type > 14) && world.hydrographics > 0,
+		'testSocial': (world) => true,
+	},{
+		'desc': 'Garden',
+		'code': 'Ga',
+		'testPhysical': (world) => world.size > 5 && world.size < 9 && world.atmosphere !== null && [5, 6, 8].includes(world.atmosphere.type) && world.hydrographics > 4 && world.hydrographics < 8,
+		'testSocial': (world) => true,
+	},{
+		'desc': 'High Population',
+		'code': 'Hi',
+		'testPhysical': (world) => true,
+		'testSocial': (world) => world.population > 8,
+	},{
+		'desc': 'High Tech',
+		'code': 'Ht',
+		'testPhysical': (world) => true,
+		'testSocial': (world) => world.technology > 11,
+	},{
+		'desc': 'Ice-Capped',
+		'code': 'Ic',
+		'testPhysical': (world) => world.atmosphere !== null && world.atmosphere.type < 2 && world.hydrographics > 0,
+		'testSocial': (world) => true,
+	},{
+		'desc': 'Industrial',
+		'code': 'In',
+		'testPhysical': (world) => world.atmosphere !== null && ![3, 5, 6, 8].includes(world.atmosphere.type) && world.atmosphere.type < 13,
+		'testSocial': (world) => world.population > 8,
+	},{
+		'desc': 'Low Population',
+		'code': 'Lo',
+		'testPhysical': (world) => true,
+		'testSocial': (world) => world.population > 0 && world.population < 4,
+	},{
+		'desc': 'Low Tech',
+		'code': 'Lt',
+		'testPhysical': (world) => true,
+		'testSocial': (world) => world.population > 0 && world.technology < 6,
+	},{
+		'desc': 'Non-Agricultural',
+		'code': 'Na',
+		'testPhysical': (world) => world.atmosphere !== null && world.atmosphere.type < 4 && world.hydrographics < 4,
+		'testSocial': (world) => world.population > 5,
+	},{
+		'desc': 'Non-Industrial',
+		'code': 'Ni',
+		'testPhysical': (world) => true,
+		'testSocial': (world) => world.population > 3 && world.population < 7,
+	},{
+		'desc': 'Poor',
+		'code': 'Po',
+		'testPhysical': (world) => world.atmosphere !== null && world.atmosphere.type > 1 && world.atmosphere.type < 6 && world.hydrographics < 4,
+		'testSocial': (world) => true,
+	},{
+		'desc': 'Rich',
+		'code': 'Ri',
+		'testPhysical': (world) => world.atmosphere !== null && [6, 8].includes(world.atmosphere.type),
+		'testSocial': (world) => world.population > 5 && world.population < 9 && world.government > 3 && world.government < 10,
+	},{
+		'desc': 'Vacuum',
+		'code': 'Va',
+		'testPhysical': (world) => world.atmosphere !== null && world.atmosphere.type === 0,
+		'testSocial': (world) => true,
+	},{
+		'desc': 'Water World',
+		'code': 'Wa',
+		'testPhysical': (world) => world.atmosphere !== null && ![0, 1, 10, 11, 12].includes(world.atmosphere.type) && world.atmosphere.type < 15 && world.hydrographics === 10,
+		'testSocial': (world) => true,
+	},
+];
+
 class Roll
 {
 	constructor(die_qty, die_size = 6, modifier = 0, description = '')
@@ -2363,6 +2460,16 @@ class World extends OrbitingBody
 			+ '-' + round(this.density, 3)
 			+ '-' + round(this.gravity, 3)
 			+ '-' + round(this.getTotalMass(), 3);
+	}
+
+	getTradeProfile()
+	{
+		const flag = (this.population < 0);
+		const codes = TRADE_CODES.filter(entry => entry.testPhysical(this) && (flag || entry.testSocial(this)));
+		const failed = (flag ? codes.filter(entry => !entry.testSocial(this)).map(entry => entry.code).join(', ') : '');
+		return flag
+			? codes.filter(entry => entry.testSocial(this)).map(entry => entry.code).join(', ') + (failed.length > 0 ? ' (' + failed + ')' : '')
+			: codes.map(entry => entry.code).join(', ');
 	}
 
 	/**
@@ -7874,6 +7981,7 @@ function displayMainWorldResults(flagger, n_stellar = 1)
 			row.children[j++].innerHTML = (entry.sophont_presence < 0 ? 'None' : (entry.sophont_presence > 0 ? 'Living' : 'Extinct'));
 			row.children[j++].innerHTML = entry.atmosphere.greenhouse_factor.toFixed(3);
 			row.children[j++].innerHTML = toHexCode(entry.surface_distribution);
+			row.children[j++].innerHTML = entry.getTradeProfile();
 			body.appendChild(row);
 		});
 	}
