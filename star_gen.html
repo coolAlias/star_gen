@@ -1499,7 +1499,7 @@ const TRADE_CODES = [
 	},{
 		'desc': 'Asteroid',
 		'code': 'As',
-		'testPhysical': (world) => world.size === 0 && world.atmosphere !== null && world.atmosphere.type === 0 && world.hydrographics === 0,
+		'testPhysical': (world) => world.size === 0 && (world.atmosphere === null || world.atmosphere.type === 0) && world.hydrographics === 0,
 		'testSocial': (world) => true,
 	},{
 		'desc': 'Barren',
@@ -1574,7 +1574,7 @@ const TRADE_CODES = [
 	},{
 		'desc': 'Vacuum',
 		'code': 'Va',
-		'testPhysical': (world) => world.atmosphere !== null && world.atmosphere.type === 0,
+		'testPhysical': (world) => world.atmosphere === null || world.atmosphere.type === 0,
 		'testSocial': (world) => true,
 	},{
 		'desc': 'Water World',
