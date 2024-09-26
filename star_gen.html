@@ -7070,8 +7070,8 @@ class AtmosphereFactory extends AbstractFactory
 		const orbit = world.getHzcoOrbit();
 		if (orbit < world.getHzcoPlus(-2)) return this.genTypeHotPlus(world, roll);
 		if (orbit < world.getHzcoPlus(-1)) return this.genTypeHot(world, roll);
-		if (orbit > world.getHzcoPlus(3)) return this.genTypeCold(world, roll);
-		if (orbit > world.getHzcoPlus(1)) return this.genTypeColdPlus(world, roll);
+		if (orbit > world.getHzcoPlus(3)) return this.genTypeColdPlus(world, roll);
+		if (orbit > world.getHzcoPlus(1)) return this.genTypeCold(world, roll);
 		log('Failed to determine atmosphere for ' + world.getDesignation(2) + ' at Orbit# ' + orbit.toFixed(4) + ' around HZCO ' + world.getHzco());
 		return new Atmosphere(0);
 	}
