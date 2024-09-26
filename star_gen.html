@@ -7980,7 +7980,7 @@ function displayMainWorldResults(flagger, n_stellar = 1)
 			row.children[j++].innerHTML = toHexCode(entry.biodiversity);
 			row.children[j++].innerHTML = toHexCode(entry.biocompatibility);
 			row.children[j++].innerHTML = (entry.sophont_presence < 0 ? 'None' : (entry.sophont_presence > 0 ? 'Living' : 'Extinct'));
-			row.children[j++].innerHTML = entry.atmosphere.greenhouse_factor.toFixed(3);
+			row.children[j++].innerHTML = (entry.atmosphere ? entry.atmosphere.greenhouse_factor.toFixed(3) : '-');
 			row.children[j++].innerHTML = toHexCode(entry.surface_distribution);
 			row.children[j++].innerHTML = entry.getTradeProfile();
 			body.appendChild(row);
