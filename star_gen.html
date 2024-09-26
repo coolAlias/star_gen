@@ -7627,16 +7627,16 @@ class MainWorldFactory extends AbstractFactory
 			world.population = this.genPopulation(world);
 		}
 		if (world.world_profile === null || world.world_profile.government < 0) {
-			world.government = this.genGovernment(world);
+			world.government = clamp(this.genGovernment(world), 0, 15);
 		}
 		if (world.world_profile === null || world.world_profile.law < 0) {
-			world.law = this.genLawLevel(world);
+			world.law = Math.max(0, this.genLawLevel(world));
 		}
 		if (world.world_profile === null || world.world_profile.starport < 0) {
 			world.starport = this.genStarport(world);
 		}
 		if (world.world_profile === null || world.world_profile.technology < 0) {
-			world.technology = this.genTechnologyLevel(world);
+			world.technology = Math.max(0, this.genTechnologyLevel(world));
 		}
 	}
 
