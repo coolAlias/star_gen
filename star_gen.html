@@ -2872,14 +2872,16 @@ class WorldProfile
 	parseProfile(uwp)
 	{
 		uwp = this.clean(uwp);
-		if (uwp.length === 7 || uwp.length === 9) {
+		if (uwp.length === 7 || uwp.length === 9 || uwp.length === 10) {
 			// Starport values range from 10-14 (A-E) and use 31 (X) to designate none instead of 0
 			this.starport = this.parseValue(uwp[0], 10, 14, 'Starport', [31]);
 			this.parsePhysical(uwp.substring(1));
 			this.parseSocial(uwp.substring(4));
 			// No practical cap on TL
-			if (uwp.length === 9) {
-				this.technology = this.parseValue(uwp[8], 0, 33, 'Technology Level');
+			if (uwp.length === 9 || uwp.length === 10) {
+				const tl = Number.parseInt(uwp.substring(8));
+				const hex = (Number.isNaN(tl) ? uwp[8] : toHexCode(tl));
+				this.technology = this.parseValue(hex, 0, 33, 'Technology Level');
 			}
 		} else if (uwp.length === 6) {
 			this.parsePhysical(uwp);
@@ -2887,7 +2889,7 @@ class WorldProfile
 		} else if (uwp.length === 3) {
 			this.parsePhysical(uwp);
 		} else {
-			throw new SyntaxError('World Profile format must be either SAH, ?SAHPGL, or ?SAHPGL-T');
+			throw new SyntaxError('World Profile format must be either SAH, ?SAHPGL, or ?SAHPGL-TL');
 		}
 	}
 
