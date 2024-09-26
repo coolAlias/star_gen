@@ -7681,7 +7681,7 @@ class MainWorldFactory extends AbstractFactory
 	genTechnologyLevel(world)
 	{
 		const dm = this.getTechnologyLevelMod(world);
-		return this.roll(1, 6, dm, 'Technology Level');
+		return world.population > 0 ? this.roll(1, 6, dm, 'Technology Level') : 0;
 	}
 
 	getTechnologyLevelMod(world)
