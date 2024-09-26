@@ -85,6 +85,9 @@
 			.show-options {
 				margin: 8px;
 			}
+			.w-full {
+				width: 100%;
+			}
 			.w-60 {
 				width: 60%;
 			}
@@ -482,6 +485,7 @@
 						<th>Greenhouse Factor</th>
 						<th>Surface Distribution</th>
 						<th>Trade Codes*</th>
+						<th>Notes</th>
 					</tr>
 				</thead>
 				<tbody id="main_world_tbl_entries">
@@ -505,8 +509,11 @@
 					<td></td>
 					<td></td>
 					<td></td>
+					<td></td>
 				<tr>
 			</template>
+			<div id="main_world_history" class="container">
+			</div>
 		</div>
 		<div id="roll_history" class="container">
 		</div>
@@ -2321,6 +2328,7 @@ class World extends OrbitingBody
 		this.government = -1;
 		this.law = -1;
 		this.technology = -1;
+		this.technology_minimum = -1;
 		// Biological Ratings
 		this.biocompatibility = -1;
 		this.biocomplexity = -1;
@@ -2391,6 +2399,18 @@ class World extends OrbitingBody
 		if (this.sophont_presence > -1) {
 			desc.push(this.sophont_presence > 0 ? 'Living Sophonts' : 'Extinct Sophonts');
 		}
+		return desc.join(', ');
+	}
+
+	getMainWorldNotes()
+	{
+		let desc = [];
+		if (this.technology_minimum > 0) desc.push('Min TL' + this.technology_minimum);
+		if (this.highport) desc.push('Highport');
+		if (this.base_corsair) desc.push('Corsair Base');
+		if (this.base_military) desc.push('Military Base');
+		if (this.base_naval) desc.push('Naval Base');
+		if (this.base_scout) desc.push('Scout Base');
 		return desc.join(', ');
 	}
 
@@ -6371,6 +6391,7 @@ class WorldFactory extends AbstractFactory
 		world.resource_rating = clamp(this.genTerrestrialResourceRating(world), 2, 12);
 		world.sophont_presence = this.genSophontPresence(system, world);
 		world.habitability = clamp(this.genHabitabilityRating(world), 0, 12);
+		world.technology_minimum = this.getTechnologyLevelMinimum(world);
 		this.flushHistory(world);
 	}
 
@@ -6707,6 +6728,35 @@ class WorldFactory extends AbstractFactory
 		// DM-2 for Low < 200
 		if (world.temperature_low < 200) dm -= 2;
 		return dm;
+	}
+
+	getTechnologyLevelMinimum(world)
+	{
+		const min_a = this.getTechnologyLevelMinimumAtmosphere(world);
+		const min_h = this.getTechnologyLevelMinimumHabitability(world);
+		return Math.max(min_a, min_h);
+	}
+
+	getTechnologyLevelMinimumAtmosphere(world)
+	{
+		// Special Case: Treat null atmosphere as 0 (None)
+		if (world.atmosphere === null) return 8;
+		// Otherwise, return worst (i.e. highest) minimum
+		if (world.atmosphere.type > 15) return 14;
+		if (world.atmosphere.type === 12) return 10;
+		if (world.atmosphere.type === 11) return 9;
+		if ([0, 1, 10, 15].includes(world.atmosphere.type)) return 8;
+		if ([2, 3, 13, 14].includes(world.atmosphere.type)) return 5;
+		if ([4, 7, 9].includes(world.atmosphere.type)) return 3;
+		return 0;
+	}
+
+	getTechnologyLevelMinimumHabitability(world)
+	{
+		if (world.habitability < 1) return 8;
+		if (world.habitability < 3) return 5;
+		if (world.habitability < 8) return 3;
+		return 0;
 	}
 
 	/**
@@ -7548,6 +7598,170 @@ class AtmosphereFactory extends AbstractFactory
 	}
 }
 
+class MainWorldFactory extends AbstractFactory
+{
+	/**
+	 * @param FormData options:
+	 */
+	constructor(options)
+	{
+		super();
+	}
+
+	generate(world)
+	{
+		this.genBaseSocial(world);
+		world.highport = this.genHighport(world);
+		let dm = (world.law === 0 ? 2 : (world.law > 1 ? -2 : 0));
+		world.base_corsair = world.starport > 12 && this.roll(2, 6, dm, 'Corsair Base') > (world.starport > 13 ? 9 : 11);
+		world.base_military = world.starport < 13 && this.roll(2, 6, 0, 'Military Base') > (world.starport < 12 ? 7 : 9);
+		world.base_naval = world.starport < 12 && this.roll(2, 6, 0, 'Naval Base') > 7;
+		world.base_scout = world.starport < 14 && this.roll(2, 6, 0, 'Scout Base') > (world.starport < 11 ? 9 : (world.starport < 13 ? 8 : 7));
+	}
+
+	genBaseSocial(world)
+	{
+		if (world.world_profile === null || world.world_profile.population < 0) {
+			world.population = this.genPopulation(world);
+		}
+		if (world.world_profile === null || world.world_profile.government < 0) {
+			world.government = this.genGovernment(world);
+		}
+		if (world.world_profile === null || world.world_profile.law < 0) {
+			world.law = this.genLawLevel(world);
+		}
+		if (world.world_profile === null || world.world_profile.starport < 0) {
+			world.starport = this.genStarport(world);
+		}
+		if (world.world_profile === null || world.world_profile.technology < 0) {
+			world.technology = this.genTechnologyLevel(world);
+		}
+	}
+
+	genPopulation(world)
+	{
+		return this.roll(2, 6, -2, 'Population');
+	}
+
+	genGovernment(world)
+	{
+		return world.population > 0 ? this.roll(2, 6, world.population - 7, 'Government') : 0;
+	}
+
+	genLawLevel(world)
+	{
+		return world.population > 0 ? this.roll(2, 6, world.government - 7, 'Law Level') : 0;
+	}
+
+	genStarport(world)
+	{
+		const dm = this.getStarportModPopulation(world);
+		const roll = this.roll(2, 6, dm, 'Starport');
+		// Class 'X' Starport
+		if (roll < 3) return 31;
+		// Class 14 (E) through 10 (A)
+		return 14 - Math.floor((roll - 3) / 2);
+	}
+
+	getStarportModPopulation(world)
+	{
+		// DM-2 for Population 2-
+		if (world.population < 3) return -2;
+		// DM-1 for Population 3-4
+		if (world.population < 5) return -1;
+		// DM+2 for Population 10+
+		if (world.population > 9) return 2;
+		// DM+1 for Population 8-9
+		if (world.population > 7) return 1;
+		return 0;
+	}
+
+	genTechnologyLevel(world)
+	{
+		const dm = this.getTechnologyLevelMod(world);
+		return this.roll(1, 6, dm, 'Technology Level');
+	}
+
+	getTechnologyLevelMod(world)
+	{
+		return this.getTechnologyLevelModGovernment(world)
+			+ this.getTechnologyLevelModPhysical(world)
+			+ this.getTechnologyLevelModPopulation(world)
+			+ this.getTechnologyLevelModStarport(world);
+	}
+
+	getTechnologyLevelModGovernment(world)
+	{
+		// DM+1 for Government 0 or 5
+		if (world.government === 0 || world.government === 5) return 1;
+		// DM+2 for Government 7
+		if (world.government === 7) return 2;
+		// DM-2 for Government 13 (D) or 14 (E)
+		if (world.government === 13 || world.government === 14) return -2;
+		return 0;
+	}
+
+	getTechnologyLevelModPhysical(world)
+	{
+		// Special Case: Native Sophonts ignore SAH modifiers when determining TL
+		if (world.sophont_presence < 1) return 0;
+		let dm = 0;
+		// DM+2 for Size < 2
+		if (world.size < 2) dm += 2;
+		// DM+1 for Size 2-5
+		if (world.size > 1 && world.size < 6) dm += 1;
+		// DM+1 for Atmosphere < 4 or > 9
+		if (world.atmosphere === null || world.atmosphere.type < 4 || world.atmosphere.type > 9) dm += 1;
+		// DM+1 for Hydrographics 0 or 9
+		if (world.hydrographics === 0 || world.hydrographics === 9) dm += 1;
+		// DM+2 for Hydrographics 10 (A)
+		if (world.hydrographics === 10) dm += 2;
+		return dm;
+	}
+
+	getTechnologyLevelModPopulation(world)
+	{
+		// DM+1 for Population 1-5
+		if (world.population > 0 && world.population < 6) return 1;
+		// DM+1 for Population 8
+		if (world.population === 8) return 1;
+		// DM+2 for Population 9
+		if (world.population === 9) return 2;
+		// DM+4 for Population 10 (A) - 12 (C)
+		if (world.population > 9 && world.population < 13) return 4;
+		return 0;
+	}
+
+	getTechnologyLevelModStarport(world)
+	{
+		// DM+6 for Starport 10 (A)
+		if (world.starport === 10) return 6;
+		// DM+4 for Starport 11 (B)
+		if (world.starport === 11) return 4;
+		// DM+2 for Starport 12 (C)
+		if (world.starport === 12) return 2;
+		// DM-4 for Starport 31 (X)
+		if (world.starport === 31) return -4;
+		return 0;
+	}
+
+	genHighport(world)
+	{
+		if (world.starport > 13) return false;
+		const target = 5 + 2 * (world.starport - 10);
+		let dm = 0;
+		// DM-1 for Population 6-
+		if (world.population < 7) dm -= 1;
+		// DM+1 for Population 9+
+		if (world.population > 8) dm += 1;
+		// DM+1 for TL9-11
+		if (world.technology > 8 && world.technology < 12) dm += 1;
+		// DM+2 for TL12+
+		if (world.technology > 11) dm += 2;
+		return this.roll(2, 6, dm, 'Highport') > target;
+	}
+}
+
 function clamp(num, min, max)
 {
 	return Math.min(Math.max(num, min), max);
@@ -7938,21 +8152,27 @@ function buildRollHistoryTable(entry)
 	const table = tbl_template.content.cloneNode(true);
 	const row_template = document.getElementById('roll_row_template');
 	const body = table.querySelector('tbody');
-	entry.history.forEach(roll => {
-		const clone = row_template.content.cloneNode(true);
-		const row = clone.querySelector('tr');
-		let j = 0;
-		row.children[j++].innerHTML = roll.total;
-		row.children[j++].innerHTML = roll.dice();
-		row.children[j++].innerHTML = roll.modifier();
-		row.children[j++].innerHTML = roll.rolls.join(', ');
-		row.children[j++].innerHTML = roll.description;
-		body.appendChild(row);
-	});
+	if (entry instanceof OrbitingBody) {
+		body.id = 'history-' + entry.getDesignation(2);
+	}
+	entry.history.forEach(roll => addRollHistoryEntry(body, roll, row_template));
 	return table;
 }
 
-function displayMainWorldResults(flagger, n_stellar = 1)
+function addRollHistoryEntry(body, roll, row_template)
+{
+	const clone = row_template.content.cloneNode(true);
+	const row = clone.querySelector('tr');
+	let j = 0;
+	row.children[j++].innerHTML = roll.total;
+	row.children[j++].innerHTML = roll.dice();
+	row.children[j++].innerHTML = roll.modifier();
+	row.children[j++].innerHTML = roll.rolls.join(', ');
+	row.children[j++].innerHTML = roll.description;
+	body.appendChild(row);
+}
+
+function displayMainWorldResults(data, flagger, n_stellar = 1)
 {
 	const div = document.getElementById('main_world_candidates');
 	if (flagger.candidates.length < 1) {
@@ -7967,8 +8187,17 @@ function displayMainWorldResults(flagger, n_stellar = 1)
 		flagger.candidates.forEach(entry => {
 			const clone = row_template.content.cloneNode(true);
 			const row = clone.querySelector('tr');
+			const btn = document.createElement('button');
+			btn.className = 'right w-full';
+			btn.innerHTML = entry.main_world_rating;
+			btn.title = 'Click to generate Social characteristics (PGL etc.) for this world';
+			btn.addEventListener('click', function(e) {
+				e.preventDefault();
+				return generateMainWorldData(data, entry);
+			});
 			let j = 0;
-			row.children[j++].innerHTML = entry.main_world_rating;
+			row.id = 'main_world-' + entry.getDesignation(2);
+			row.children[j++].appendChild(btn);
 			row.children[j++].innerHTML = entry.getHostStar().getDesignation(n_stellar);
 			row.children[j++].innerHTML = entry.getDesignation(1);
 			row.children[j++].innerHTML = entry.getProfileShort();
@@ -7983,9 +8212,27 @@ function displayMainWorldResults(flagger, n_stellar = 1)
 			row.children[j++].innerHTML = (entry.atmosphere ? entry.atmosphere.greenhouse_factor.toFixed(3) : '-');
 			row.children[j++].innerHTML = toHexCode(entry.surface_distribution);
 			row.children[j++].innerHTML = entry.getTradeProfile();
+			row.children[j++].innerHTML = entry.getMainWorldNotes();
 			body.appendChild(row);
 		});
 	}
+}
+
+function generateMainWorldData(data, world)
+{
+	const designation = world.getDesignation(2);
+	log('Generating Main World Data for ' + designation);
+	const factory = new MainWorldFactory(data);
+	const history = document.getElementById('main_world_history');
+	const row = document.getElementById('main_world-' + designation);
+	factory.generate(world);
+	history.classList.remove('hide');
+	history.innerHTML = '';
+	history.appendChild(document.createTextNode('Main World Roll Log for ' + designation));
+	history.appendChild(buildRollHistoryTable(factory));
+	row.children[3].innerHTML = world.getProfileShort();
+	row.children[14].innerHTML = world.getTradeProfile();
+	row.children[15].innerHTML = world.getMainWorldNotes();
 }
 
 function toggleShowOptions(event, element, target_id)
@@ -8042,7 +8289,7 @@ window.addEventListener("load", function(event)
 			document.getElementById('n_planet_rock').innerHTML = output.n_planet_rock;
 			document.getElementById('n_empty').innerHTML = output.n_empty;
 			displayStarSystem(output, data);
-			displayMainWorldResults(flagger, output.n_stellar);
+			displayMainWorldResults(data, flagger, output.n_stellar);
 			// System generation history
 			const history = document.getElementById('roll_history');
 			history.innerHTML = '';
