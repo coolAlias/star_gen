@@ -1524,7 +1524,7 @@ const TRADE_CODES = [
 		'desc': 'Barren',
 		'code': 'Ba',
 		'testPhysical': (world) => true,
-		'testSocial': (world) => world.population === 0 && world.government === 0 && world.law === 0,
+		'testSocial': (world) => world.population === 0 && world.government === 0 && world.law_level === 0,
 	},{
 		'desc': 'Desert',
 		'code': 'De',
@@ -2397,7 +2397,9 @@ class World extends OrbitingBody
 		this.population_partial = -1;
 		this.government = -1;
 		this.government_authority = -1;
-		this.law = -1;
+		this.law_level = -1;
+		this.law_primary = -1;
+		this.law_weapons = -1;
 		this.technology = -1;
 		this.technology_minimum = -1;
 		// Biological Ratings
@@ -2419,7 +2421,7 @@ class World extends OrbitingBody
 			this.starport = this.world_profile.starport;
 			this.population = this.world_profile.population;
 			this.government = this.world_profile.government;
-			this.law = this.world_profile.law;
+			this.law_level = this.world_profile.law_level;
 			this.technology = this.world_profile.technology;
 		}
 	}
@@ -2484,6 +2486,7 @@ class World extends OrbitingBody
 		if (this.base_scout) desc.push('Scout Base');
 		if (this.population_partial > 0) desc.push('Pop:&nbsp;' + this.getPopulationProfile());
 		if (this.government_authority > 0) desc.push('Gov:&nbsp;' + this.getGovernmentProfile());
+		if (this.law_primary > -1) desc.push('Law:&nbsp;' + this.getLawProfile());
 		return desc.join(', ');
 	}
 
@@ -2526,6 +2529,34 @@ class World extends OrbitingBody
 			+ (subs.length > 0 ? '-' + subs.join('-') : '');
 	}
 
+	getLawProfile()
+	{
+		const data = [this.getLawSystemProfile(), this.getLawLevelProfile()];
+		return data.filter(v => v.length > 0).join(' ');
+	}
+
+	getLawLevelProfile()
+	{
+		if (this.law_weapons < 0) return '';
+		return toHexCode(this.law_level)
+			+ '-'
+			+ toHexCode(this.law_weapons)
+			+ toHexCode(this.law_economic)
+			+ toHexCode(this.law_criminal)
+			+ toHexCode(this.law_private)
+			+ toHexCode(this.law_personal);
+	}
+
+	getLawSystemProfile()
+	{
+		if (this.law_primary < 0) return '';
+		return (this.law_primary === 0 ? 'I' : toHexCode(this.law_primary))
+			+ (this.law_secondary === 0 ? 'I' : toHexCode(this.law_secondary))
+			+ toHexCode(this.law_uniformity)
+			+ (this.law_innocence ? '-Y' : '-N')
+			+ (this.law_death ? '-Y' : '-N');
+	}
+
 	getPhysicalProfile()
 	{
 		const sah = [
@@ -2553,7 +2584,7 @@ class World extends OrbitingBody
 		const pgl = [
 			toHexCode(this.population),
 			toHexCode(this.government),
-			toHexCode(this.law),
+			toHexCode(this.law_level),
 			(this.technology > -1 ? '-' + toHexCode(this.technology) : ''),
 		];
 		return pgl.join('');
@@ -2941,7 +2972,7 @@ class WorldProfile
 		this.hydrographics = -1;
 		this.population = -1;
 		this.government = -1;
-		this.law = -1;
+		this.law_level = -1;
 		this.technology = -1;
 		this.temperature = temperature;
 		this.parseProfile(uwp);
@@ -3052,7 +3083,7 @@ class WorldProfile
 		this.population = this.parseValue(part[0], 0, 15, 'Population');
 		this.government = this.parseValue(part[1], 0, 15, 'Government');
 		// Law Level is 2D-7 + government code, with a minimum of 0, so ranges from 0 to 20
-		this.law = this.parseValue(part[2], 0, 20, 'Law Level');
+		this.law_level = this.parseValue(part[2], 0, 20, 'Law Level');
 	}
 
 	parseValue(value, min, max, field, extra = [])
@@ -7746,6 +7777,7 @@ class MainWorldFactory extends AbstractFactory
 		this.genStarportFacilities(world);
 		this.genPopulationDetails(world);
 		this.genGovernmentDetails(world);
+		this.genLawDetails(world);
 		this.genFactions(world);
 		this.genFactionRelationships(world);
 	}
@@ -7758,8 +7790,8 @@ class MainWorldFactory extends AbstractFactory
 		if (world.world_profile === null || world.world_profile.government < 0) {
 			world.government = clamp(this.genGovernment(world.population), 0, 15);
 		}
-		if (world.world_profile === null || world.world_profile.law < 0) {
-			world.law = Math.max(0, this.genLawLevel(world));
+		if (world.world_profile === null || world.world_profile.law_level < 0) {
+			world.law_level = Math.max(0, this.genLawLevel(world));
 		}
 		if (world.world_profile === null || world.world_profile.starport < 0) {
 			world.starport = this.genStarport(world);
@@ -7918,7 +7950,7 @@ class MainWorldFactory extends AbstractFactory
 		// DM-2 for Government 0
 		if (world.government === 0) dm -= 2;
 		// DM+1 for Law Level 9+
-		if (world.law > 8) dm += 1;
+		if (world.law_level > 8) dm += 1;
 		// DM-2 for TL 0-2
 		if (world.technology < 3) dm -= 2;
 		// DM-1 for TL 3
@@ -8143,6 +8175,143 @@ class MainWorldFactory extends AbstractFactory
 		return world.population > 0 ? this.roll(2, 6, world.government - 7, 'Law Level') : 0;
 	}
 
+	genLawLevelSub(world, dm, category)
+	{
+		const roll = this.roll(2, 3, dm - 4, 'Law: ' + category);
+		return clamp(world.law_level + roll, 0, 18);
+	}
+
+	getLawLevelModCriminal(world)
+	{
+		// DM+1 for Inquisitorial (special case = 0) legal systems
+		if (world.law_primary === 0) return 1;
+		return 0;
+	}
+
+	getLawLevelModEconomic(world)
+	{
+		if (world.government === 0) return -2;
+		if (world.government === 1) return 2;
+		if (world.government === 2) return -1;
+		if (world.government === 9) return 1;
+		return 0;
+	}
+
+	getLawLevelModPersonal(world)
+	{
+		// DM+2 for Government 1
+		if (world.government === 1) return 2;
+		// DM-1 for Government 0 or 2
+		if (world.government < 3) return -1;
+		return 0;
+	}
+
+	getLawLevelModPrivate(world)
+	{
+		if ([3, 5, 12].includes(world.government)) return -1;
+		return 0;
+	}
+
+	getLawLevelModWeapons(world)
+	{
+		if (world.population_concentration < 4) return -1;
+		if (world.population_concentration > 7) return 1;
+		return 0;
+	}
+
+	genLawDetails(world)
+	{
+		// Law characteristics
+		world.law_primary = this.genLawSystemPrimary(world);
+		world.law_secondary = this.genLawSystemSecondary(world);
+		world.law_uniformity = this.genLawUniformity(world);
+		world.law_innocence = this.genLawInnocence(world);
+		world.law_death = this.genLawDeath(world);
+		// Subclassifications
+		world.law_weapons = this.genLawLevelSub(world, this.getLawLevelModWeapons(world), 'Weapons and Armor');
+		world.law_economic = this.genLawLevelSub(world, this.getLawLevelModEconomic(world), 'Economic');
+		world.law_criminal = this.genLawLevelSub(world, this.getLawLevelModCriminal(world), 'Criminal');
+		world.law_private = this.genLawLevelSub(world, this.getLawLevelModPrivate(world), 'Private');
+		world.law_personal = this.genLawLevelSub(world, this.getLawLevelModPersonal(world), 'Personal Rights');
+	}
+
+	genLawSystemPrimary(world)
+	{
+		// Special Case: Judicial system categorised as None on worlds without an established government
+		if (world.government === 0) return 22; // N
+		const dm = this.getLawSystemMod(world);
+		const roll = this.roll(2, 6, dm, 'Law: System of Justice');
+		if (roll < 6) return 0; // I is not a valid eHex code, so use 0 instead
+		if (roll < 9) return 10; // A
+		return 27; // T
+	}
+
+	genLawSystemSecondary(world)
+	{
+		if ([10, 27].includes(world.law_primary)) {
+			const dm = this.getLawSystemMod(world);
+			const roll = this.roll(2, 6, dm, 'Law: System of Justice, Secondary');
+			if (roll > 11) return 0; // I
+		}
+		return world.law_primary;
+	}
+
+	getLawSystemMod(world)
+	{
+		let dm = 0;
+		// DM-2 for Government 1, 8-C (12), or F (15)
+		if ([1, 8, 9, 10, 11, 12, 15].includes(world.government)) dm -= 2;
+		// DM+4 for Government D (13) or E (14)
+		if ([13, 14].includes(world.government)) dm += 4;
+		// DM-4 for Law Level A+, except for Governments D and E
+		if (world.law_level > 9 && ![13, 14].includes(world.government)) dm -= 4;
+		// DM+4 for TL 0
+		if (world.technology < 1) dm += 4;
+		// DM+2 for TL 1-2
+		if (world.technology > 0 && world.technology < 3) dm += 2;
+		// DM-2 for governments with the Judicial branch as the main authority
+		if (world.government_authority === 18) dm -= 2;
+		return dm;
+	}
+
+	genLawUniformity(world)
+	{
+		// Special Case: Confederal governments are always Territorial
+		if (world.government_centralisation === 12) return 27; // T
+		// Special Case: Federal governments are Territorial on 1-5 and Personal on 6
+		if (world.government_centralisation === 15) {
+			return (this.roll(1, 6, 0, 'Law: Uniformity') < 6 ? 27 : 23);
+		}
+		let dm = 0;
+		// DM-1 for Government 3, 5, or A+
+		if (world.government === 3 || world.government === 5 || world.government > 9) dm--;
+		// DM+1 for Government 2
+		if (world.government === 2) dm++;
+		const roll = this.roll(1, 6, dm, 'Law: Uniformity');
+		if (roll < 3) return 23; // P
+		if (roll > 3) return 28; // U
+		return 27; // T
+	}
+
+	genLawInnocence(world)
+	{
+		// DM+2 for Adversarial justice system
+		const dm = (world.law_primary === 10 ? 2 : 0);
+		const roll = this.roll(1, 6, dm - world.law_level, 'Law: Presumption of Innocence');
+		return roll > -1;
+	}
+
+	genLawDeath(world)
+	{
+		let dm = 0;
+		// DM-4 for Government 0
+		if (world.government === 0) dm -= 4;
+		// DM+4 for Law Level 9+
+		if (world.law_level > 8) dm += 4;
+		const roll = this.roll(2, 6, dm, 'Law: Death Penalty');
+		return roll > 7;
+	}
+
 	genStarport(world)
 	{
 		const dm = this.getStarportModPopulation(world);
@@ -8169,7 +8338,7 @@ class MainWorldFactory extends AbstractFactory
 	genStarportFacilities(world)
 	{
 		world.highport = this.genHighport(world);
-		let dm = (world.law === 0 ? 2 : (world.law > 1 ? -2 : 0));
+		let dm = (world.law_level === 0 ? 2 : (world.law_level > 1 ? -2 : 0));
 		world.base_corsair = world.starport > 12 && this.roll(2, 6, dm, 'Corsair Base') > (world.starport > 13 ? 9 : 11);
 		world.base_military = world.starport < 13 && this.roll(2, 6, 0, 'Military Base') > (world.starport < 12 ? 7 : 9);
 		world.base_naval = world.starport < 12 && this.roll(2, 6, 0, 'Naval Base') > 7;
@@ -8731,6 +8900,7 @@ function generateMainWorldData(data, world)
 	history.appendChild(createElement('h3', 'Main World Results for ' + designation));
 	history.appendChild(createElementGroup('p', [createElement('span', 'Population Profile: ', 'text-bold'), createElement('span', world.getPopulationProfile())]));
 	history.appendChild(createElementGroup('p', [createElement('span', 'Government Profile: ', 'text-bold'), createElement('span', world.getGovernmentProfile())]));
+	history.appendChild(createElementGroup('p', [createElement('span', 'Law Profile: ', 'text-bold'), createElement('span', world.getLawProfile())]));
 	world.factions.forEach(faction => history.appendChild(createElementGroup('p', [createElement('span', 'Faction: ', 'text-bold'), createElement('span', faction.getProfileLong())])));
 	history.appendChild(createElement('h4', 'Roll Log', 'small-caps'));
 	history.appendChild(buildRollHistoryTable(factory));
