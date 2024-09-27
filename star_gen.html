@@ -8248,10 +8248,8 @@ class MainWorldFactory extends AbstractFactory
 
 	genLawSystemSecondary(world)
 	{
-		if ([10, 27].includes(world.law_primary)) {
-			const dm = this.getLawSystemMod(world);
-			const roll = this.roll(2, 6, dm, 'Law: System of Justice, Secondary');
-			if (roll > 11) return 0; // I
+		if ([10, 27].includes(world.law_primary) && 11 < this.roll(2, 6, world.law_level, 'Law: System of Justice, Secondary')) {
+			return 0; // I
 		}
 		return world.law_primary;
 	}
