@@ -88,6 +88,10 @@ Worlds with an Atmosphere code of 4-9 will be placed around an HZCO if possible.
 
 **Life: Check Every World** By default, only worlds within the HZCO or pre-determined Main Worlds are checked for native lifeforms. Enable this option to check every world.
 
+### Main World Options
+
+**Population A+ Variant** If checked, the Population A Variant rule will be used to determine P Value for worlds with Population A+.
+
 ## Notes
 
 **Orbit#** Orbit#s are measured from the object being orbited. All Secondary stars and groups of stars orbit the Primary Star; Companions orbit their host; Planets may orbit an individual star or a group of stars.

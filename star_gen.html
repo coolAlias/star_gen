@@ -305,6 +305,12 @@
 								<label for="sub_moons"><input id="sub_moons" name="sub_moons" type="checkbox" /> Display Moons under Host Planet</label>
 							</div>
 						</div>
+						<div class="flex-row basis-full md:basis-1/2">
+							<h3 class="small-caps mb-4">Main World Options</h3>
+							<div class="input_container">
+								<label for="pop_curve"><input id="pop_curve" name="pop_curve" type="checkbox" checked /> Population A+ Variant</label>
+							</div>
+						</div>
 					</div>
 				</div>
 				<p class="show-options"><a href="#" onclick="return toggleShowOptions(event, this, 'options_stellar')">Show More</a></p>
@@ -2325,6 +2331,7 @@ class World extends OrbitingBody
 		// Starport and PGL-T Social Characteristics
 		this.starport = -1;
 		this.population = -1;
+		this.population_partial = -1;
 		this.government = -1;
 		this.law = -1;
 		this.technology = -1;
@@ -2411,6 +2418,7 @@ class World extends OrbitingBody
 		if (this.base_military) desc.push('Military Base');
 		if (this.base_naval) desc.push('Naval Base');
 		if (this.base_scout) desc.push('Scout Base');
+		if (this.population_partial > 0) desc.push('Pop:&nbsp;' + this.getPopulationProfile());
 		return desc.join(', ');
 	}
 
@@ -2445,6 +2453,17 @@ class World extends OrbitingBody
 			toHexCode(this.hydrographics),
 		];
 		return sah.join('');
+	}
+
+	getPopulationProfile()
+	{
+		if (this.population_partial < 0) return 'TBD';
+		if (this.population < 1) return '0';
+		return toHexCode(this.population)
+			+ '-' + this.population_partial
+			+ '-' + this.population_concentration
+			+ '-' + this.population_urban
+			+ '-' + this.population_major_cities;
 	}
 
 	getSocialProfile()
@@ -2553,6 +2572,27 @@ class World extends OrbitingBody
 		return this.diameter + this.diameter_deviation;
 	}
 
+	getTotalPopulation()
+	{
+		if (this.population < 1) return 0;
+		const min = Math.pow(10, this.population);
+		const p = Math.max(1, this.population_partial);
+		return Math.floor(min * p);
+	}
+
+	getTotalPopulationMax()
+	{
+		if (this.population < 1) return 0;
+		const min = this.getTotalPopulationMin();
+		return (min * 10) - 1;
+	}
+
+	getTotalPopulationMin()
+	{
+		if (this.population < 1) return 0;
+		return Math.pow(10, this.population);
+	}
+
 	getTypeName()
 	{
 		switch (this.type) {
@@ -2617,6 +2657,11 @@ class World extends OrbitingBody
 		const upper = this.getHzcoPlus(1);
 		const orbit = this.getHzcoOrbit();
 		return orbit > lower && orbit < upper;
+	}
+
+	isInTwilightZone()
+	{
+		return this.orbit_lock > 0 && this.period_solar === null;
 	}
 }
 
@@ -7604,21 +7649,19 @@ class MainWorldFactory extends AbstractFactory
 {
 	/**
 	 * @param FormData options:
+	 *   @option bool pop_curve True to use the Population A Variant rule when determining P Value for worlds with Population A+
 	 */
 	constructor(options)
 	{
 		super();
+		this.pop_curve = options.has('pop_curve');
 	}
 
 	generate(world)
 	{
 		this.genBaseSocial(world);
-		world.highport = this.genHighport(world);
-		let dm = (world.law === 0 ? 2 : (world.law > 1 ? -2 : 0));
-		world.base_corsair = world.starport > 12 && this.roll(2, 6, dm, 'Corsair Base') > (world.starport > 13 ? 9 : 11);
-		world.base_military = world.starport < 13 && this.roll(2, 6, 0, 'Military Base') > (world.starport < 12 ? 7 : 9);
-		world.base_naval = world.starport < 12 && this.roll(2, 6, 0, 'Naval Base') > 7;
-		world.base_scout = world.starport < 14 && this.roll(2, 6, 0, 'Scout Base') > (world.starport < 11 ? 9 : (world.starport < 13 ? 8 : 7));
+		this.genStarportFacilities(world);
+		this.genPopulationDetails(world);
 	}
 
 	genBaseSocial(world)
@@ -7643,6 +7686,183 @@ class MainWorldFactory extends AbstractFactory
 	genPopulation(world)
 	{
 		return this.roll(2, 6, -2, 'Population');
+	}
+
+	genPopulationDetails(world)
+	{
+		const trades = world.getTradeProfile();
+		world.population_partial = this.genPopulationPartial(world);
+		world.population_concentration = this.genPopulationConcentration(world, trades);
+		world.population_urban = this.genPopulationUrban(world, trades);
+		world.population_major_cities = this.genPopulationCityCount(world, trades);
+	}
+
+	genPopulationPartial(world)
+	{
+		if (world.population < 1) return 0;
+		const tens = 0.1 * this.roll(1, 10, -1, 'Population: P Value, tens place');
+		const hund = (world.population < 3 ? 0 : 0.01 * this.roll(1, 10, -1, 'Population: P Value, hundreds place'));
+		if (this.pop_curve && world.population > 9) {
+			let p = 1;
+			while (p < 9 && 4 < this.roll(1, 6, 0, 'Population: P Value, Pop A+ world')) p++;
+			return p + tens + hund;
+		}
+		const init = 2 * this.roll(1, 3, -1, 'Population: P Value, 1st roll');
+		const base = init + this.roll(1, 3, 0, 'Population: P Value, 2nd roll');
+		return round(base + tens + hund, 2);
+	}
+
+	genPopulationConcentration(world, trades)
+	{
+		if (world.population < 1) return 0;
+		// Special Case: If 1D > Population, PCR is 9
+		if (world.population < 6 && world.population < this.roll(1, 6, 0, 'Population Concentration: Low Pop World')) return 9;
+		const dm = this.getPopulationConcentrationMod(world, trades);
+		const min = (world.population < 9 ? 0 : 1);
+		return clamp(this.roll(1, 6, dm, 'Population Concentration'), min, 9);
+	}
+
+	getPopulationConcentrationMod(world, trades)
+	{
+		let dm = 0;
+		// DM+2 for Size 1
+		if (world.size === 1) dm += 2;
+		// DM+1 for Size 2-3
+		if (world.size === 2 || world.size === 3) dm += 1;
+		// DM+2 for Twilight Zone world
+		if (world.isInTwilightZone()) dm += 2;
+		// DM+3 for Minimum TL 8+
+		if (world.technology_minimum > 7) dm += 3;
+		// DM+1 for Minimum TL 3–7
+		if (world.technology_minimum > 2 && world.technology_minimum < 8) dm += 1;
+		// DM-1 for Population 8
+		if (world.population === 8) dm -= 1;
+		// DM-2 for Population 9+
+		if (world.population > 8) dm -= 2;
+		// DM-2 for Government 7
+		if (world.government === 7) dm -= 2;
+		// DM-2 for TL 0–1
+		if (world.technology < 2) dm -= 2;
+		// DM-1 for TL 2–3
+		if (world.technology > 1 && world.technology < 4) dm -= 1;
+		// DM+1 for TL 4-9
+		if (world.technology > 3 && world.technology < 10) dm += 1;
+		// DM-2 for Agricultural trade code
+		if (trades.indexOf('Ag') > -1) dm -= 2;
+		// DM+1 for Industrial trade code
+		if (trades.indexOf('In') > -1) dm += 1;
+		// DM-1 for Non-Agricultural trade code
+		if (trades.indexOf('Na') > -1) dm -= 1;
+		// DM+1 for Rich trade code
+		if (trades.indexOf('Ri') > -1) dm += 1;
+		return dm;
+	}
+
+	genPopulationUrban(world, trades)
+	{
+		if (world.population < 1) return 0;
+		const max = this.getPopulationUrbanMax(world, trades);
+		const min = this.getPopulationUrbanMin(world, trades);
+		const dm = this.getPopulationUrbanMod(world, trades);
+		const roll = clamp(this.roll(2, 6, dm, 'Urbanisation Percentage, first roll'), 0, 13);
+		const ranges = [0, 0, 6, 12, 18, 22, 34, 46, 58, 70, 84, 90, 96, 100];
+		let urban = ranges[roll];
+		if (roll > 0 && roll < 12) {
+			const plus = this.roll(1, 6, 0, 'Urbanisation Percentage, second roll');
+			if (roll > 4 && roll < 10) {
+				urban += 2 * plus + this.roll(1, 2, 0, 'Urbanisation Percentage, third roll');
+			} else {
+				urban += plus;
+			}
+		} else if (roll === 12) {
+			urban += this.roll(1, 3, 0, 'Urbanisation Percentage, second roll');
+		}
+		// Special Case: Urbanisation % did not meet minimum from DMs; reroll
+		if (urban < min) {
+			return min + this.roll(1, 6, 0, 'Urbanisation Percentage, rerolling < Min ' + min);
+		}
+		// Special Case: Urbanisation % exceeded maximum from DMs; reroll
+		if (urban > max) {
+			return max + this.roll(1, 6, 0, 'Urbanisation Percentage, rerolling > Max ' + max);
+		}
+		return urban;
+	}
+
+	getPopulationUrbanMax(world, trades)
+	{
+		// Maximum 1D+20 percent for TL 0-2
+		if (world.technology < 3) return 20;
+		// Maximum 1D+30 percent for TL 3
+		if (world.technology === 3) return 30;
+		// Maximum 1D+60 percent for TL 4
+		if (world.technology === 4) return 60;
+		// Maximum 1D+90 percent for TL 5-9
+		if (world.technology > 4 && world.technology < 10) return 90;
+		// Maximum 1D+90 percent for Agricultural trade code if not already determined by TL
+		if (trades.indexOf('Ag') > -1) return 90;
+		return 100;
+	}
+
+	getPopulationUrbanMin(world, trades)
+	{
+		// Minimum 1D+18 percent for Population 9
+		if (world.population === 9) return 18;
+		// Minimum 1D+50 percent for Population A+
+		if (world.population > 9)  return 50;
+		return 0;
+	}
+
+	getPopulationUrbanMod(world, trades)
+	{
+		let dm = 0;
+		// DM- PCR-3 for PCR 0-2
+		if (world.population_concentration < 3) dm += world.population_concentration - 3;
+		// DM+ PCR-6 for PCR 7+
+		if (world.population_concentration > 6) dm += world.population_concentration - 6;
+		// DM-1 for Minimum TL 0-3
+		if (world.technology_minimum < 4) dm -= 1;
+		// DM+2 for Size 0
+		if (world.size === 0) dm += 2;
+		// DM+1 for Population 8
+		if (world.population === 8) dm += 1;
+		// DM+2 for Population 9
+		if (world.population === 9) dm += 2;
+		// DM+4 for Population A+
+		if (world.population > 9) dm += 4;
+		// DM-2 for Government 0
+		if (world.government === 0) dm -= 2;
+		// DM+1 for Law Level 9+
+		if (world.law > 8) dm += 1;
+		// DM-2 for TL 0-2
+		if (world.technology < 3) dm -= 2;
+		// DM-1 for TL 3
+		if (world.technology === 3) dm -= 1;
+		// DM+1 for TL 4
+		if (world.technology === 4) dm += 1;
+		// DM+2 for TL 5-9
+		if (world.technology > 4 && world.technology < 10) dm += 2
+		// DM+1 for TL 10+
+		if (world.technology > 9) dm += 1;
+		// DM-2 for Agricultural trade code
+		if (trades.indexOf('Ag') > -1) dm -= 2;
+		// DM+2 for Non-Agricultural trade code
+		if (trades.indexOf('Na') > -1) dm += 2;
+		return dm;
+	}
+
+	genPopulationCityCount(world, trades)
+	{
+		// Case 1: PCR 0 = no major cities
+		if (world.population < 1 || world.population_concentration < 1) return 0;
+		// Case 2: Population 5- and PCR 9 = 1 major city
+		if (world.population < 6 && world.population_concentration === 9) return 1;
+		// Case 3: Population 5- and PCR 1-8 = lesser of 9-PCR and Population Code
+		if (world.population < 6 && world.population_concentration < 9) return Math.min(world.population, 9 - world.population_concentration);
+		// Case 4: Population 6+ and PCR 9 = Population Code - 2D, minimum 1
+		if (world.population > 5 && world.population_concentration === 9) return Math.max(1, world.population - this.roll(2, 6, 0, 'Number of Major Cities'));
+		// Case 5: Everything else; Population < 6 cannot have more than that number of major cities
+		const n = Math.max(1, (this.roll(2, 6, 0, 'Number of Major Cities') - world.population_concentration) + Math.ceil(0.2 * world.population_urban / world.population_concentration));
+		return (world.population < 6 ? Math.min(n, world.population) : n);
 	}
 
 	genGovernment(world)
@@ -7676,6 +7896,16 @@ class MainWorldFactory extends AbstractFactory
 		// DM+1 for Population 8-9
 		if (world.population > 7) return 1;
 		return 0;
+	}
+
+	genStarportFacilities(world)
+	{
+		world.highport = this.genHighport(world);
+		let dm = (world.law === 0 ? 2 : (world.law > 1 ? -2 : 0));
+		world.base_corsair = world.starport > 12 && this.roll(2, 6, dm, 'Corsair Base') > (world.starport > 13 ? 9 : 11);
+		world.base_military = world.starport < 13 && this.roll(2, 6, 0, 'Military Base') > (world.starport < 12 ? 7 : 9);
+		world.base_naval = world.starport < 12 && this.roll(2, 6, 0, 'Naval Base') > 7;
+		world.base_scout = world.starport < 14 && this.roll(2, 6, 0, 'Scout Base') > (world.starport < 11 ? 9 : (world.starport < 13 ? 8 : 7));
 	}
 
 	genTechnologyLevel(world)
@@ -8230,11 +8460,29 @@ function generateMainWorldData(data, world)
 	factory.generate(world);
 	history.classList.remove('hide');
 	history.innerHTML = '';
-	history.appendChild(document.createTextNode('Main World Roll Log for ' + designation));
+	history.appendChild(createElement('h3', 'Main World Results for ' + designation));
+	history.appendChild(createElementGroup('p', [createElement('span', 'Population Profile: ', 'text-bold'), createElement('span', world.getPopulationProfile())]));
+	history.appendChild(createElement('h4', 'Roll Log', 'small-caps'));
 	history.appendChild(buildRollHistoryTable(factory));
 	row.children[3].innerHTML = world.getProfileShort();
 	row.children[14].innerHTML = world.getTradeProfile();
 	row.children[15].innerHTML = world.getMainWorldNotes();
+}
+
+function createElement(type, text, classes = '')
+{
+	const el = document.createElement(type);
+	el.className = classes;
+	el.appendChild(document.createTextNode(text));
+	return el;
+}
+
+function createElementGroup(type, elements, classes = '')
+{
+	const el = document.createElement(type);
+	el.className = classes;
+	elements.forEach(inner => el.appendChild(inner));
+	return el;
 }
 
 function toggleShowOptions(event, element, target_id)
