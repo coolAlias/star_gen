@@ -8898,6 +8898,7 @@ function generateMainWorldData(data, world)
 	history.classList.remove('hide');
 	history.innerHTML = '';
 	history.appendChild(createElement('h3', 'Main World Results for ' + designation));
+	history.appendChild(createElementGroup('p', [createElement('span', 'Universal Profile: ', 'text-bold'), createElement('span', world.getProfileShort())]));
 	history.appendChild(createElementGroup('p', [createElement('span', 'Population Profile: ', 'text-bold'), createElement('span', world.getPopulationProfile())]));
 	history.appendChild(createElementGroup('p', [createElement('span', 'Government Profile: ', 'text-bold'), createElement('span', world.getGovernmentProfile())]));
 	history.appendChild(createElementGroup('p', [createElement('span', 'Law Profile: ', 'text-bold'), createElement('span', world.getLawProfile())]));
