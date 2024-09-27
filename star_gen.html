@@ -2287,6 +2287,51 @@ class StarSystem
 	}
 }
 
+class Faction
+{
+	/**
+	 * @param World world The world in which this faction resides
+	 * @param int index Numeric index of this faction
+	 * @param int government The faction's government type
+	 * @param int strength The faction's strength; valid values (in eHex) are F, G, M, N, O, P, S
+	 */
+	constructor(world, index, government, strength)
+	{
+		this.index = index;
+		this.n_nations = 1;
+		this.population_concentration = world.population_concentration;
+		this.government = government;
+		this.government_authority = -1;
+		this.strength = strength;
+	}
+
+	getProfileLong()
+	{
+		const gov = this.getGovernmentProfile();
+		return convertToRoman(this.index)
+			+ '-' + toHexCode(this.government)
+			+ '-' + (this.strength === 0 ? 'O' : toHexCode(this.strength))
+			+ (gov.length > 0 ? ': ' + gov : '')
+			+ (this.n_nations > 1 ? ': ' + this.n_nations + ' Nations' : '');
+	}
+
+	getGovernmentProfile()
+	{
+		if (this.government_authority < 0) return '';
+		let subs = [];
+		for (const k in this.government_structures) {
+			if (this.government_structures[k] !== null && this.government_authority !== +k) {
+				subs.push(toHexCode(+k) + toHexCode(this.government_structures[k]));
+			}
+		}
+		return toHexCode(this.government)
+			+ '-' + toHexCode(this.government_centralisation)
+			+ toHexCode(this.government_authority)
+			+ (this.government_authority === 11 ? 'B' : toHexCode(this.government_structures[this.government_authority]))
+			+ (subs.length > 0 ? '-' + subs.join('-') : '');
+	}
+}
+
 class World extends OrbitingBody
 {
 	/**
@@ -2333,6 +2378,7 @@ class World extends OrbitingBody
 		this.population = -1;
 		this.population_partial = -1;
 		this.government = -1;
+		this.government_authority = -1;
 		this.law = -1;
 		this.technology = -1;
 		this.technology_minimum = -1;
@@ -2419,6 +2465,7 @@ class World extends OrbitingBody
 		if (this.base_naval) desc.push('Naval Base');
 		if (this.base_scout) desc.push('Scout Base');
 		if (this.population_partial > 0) desc.push('Pop:&nbsp;' + this.getPopulationProfile());
+		if (this.government_authority > 0) desc.push('Gov:&nbsp;' + this.getGovernmentProfile());
 		return desc.join(', ');
 	}
 
@@ -2443,6 +2490,22 @@ class World extends OrbitingBody
 			toHexCode(this.biocompatibility),
 		];
 		return mxdc.join('');
+	}
+
+	getGovernmentProfile()
+	{
+		if (this.government_authority < 0) return '';
+		let subs = [];
+		for (const k in this.government_structures) {
+			if (this.government_structures[k] !== null && this.government_authority !== +k) {
+				subs.push(toHexCode(+k) + toHexCode(this.government_structures[k]));
+			}
+		}
+		return toHexCode(this.government)
+			+ '-' + toHexCode(this.government_centralisation)
+			+ toHexCode(this.government_authority)
+			+ (this.government_authority === 11 ? 'B' : toHexCode(this.government_structures[this.government_authority]))
+			+ (subs.length > 0 ? '-' + subs.join('-') : '');
 	}
 
 	getPhysicalProfile()
@@ -7662,6 +7725,8 @@ class MainWorldFactory extends AbstractFactory
 		this.genBaseSocial(world);
 		this.genStarportFacilities(world);
 		this.genPopulationDetails(world);
+		this.genGovernmentDetails(world);
+		this.genFactions(world);
 	}
 
 	genBaseSocial(world)
@@ -7670,7 +7735,7 @@ class MainWorldFactory extends AbstractFactory
 			world.population = this.genPopulation(world);
 		}
 		if (world.world_profile === null || world.world_profile.government < 0) {
-			world.government = clamp(this.genGovernment(world), 0, 15);
+			world.government = clamp(this.genGovernment(world.population), 0, 15);
 		}
 		if (world.world_profile === null || world.world_profile.law < 0) {
 			world.law = Math.max(0, this.genLawLevel(world));
@@ -7865,9 +7930,169 @@ class MainWorldFactory extends AbstractFactory
 		return (world.population < 6 ? Math.min(n, world.population) : n);
 	}
 
-	genGovernment(world)
+	genGovernment(population)
 	{
-		return world.population > 0 ? this.roll(2, 6, world.population - 7, 'Government') : 0;
+		return population > 0 ? this.roll(2, 6, population - 7, 'Government') : 0;
+	}
+
+	genGovernmentDetails(faction, main_gov = null)
+	{
+		faction.government_centralisation = this.genGovernmentCentralisation(faction.government, faction.population_concentration);
+		faction.government_authority = this.genGovernmentAuthority(faction.government, faction.government_centralisation);
+		// In order of Legislative, Executive, Judicial
+		faction.government_structures = {20: null, 14: null, 18: null};
+		// Determine structure of authoritative branch for non-Balanced governments
+		if (faction.government_authority !== 11) {
+			faction.government_structures[faction.government_authority] = this.genGovernmentStructure(faction.government, faction.government_authority, null);
+		}
+		// Special Case: When a Ruler or Single Council is dominant in a Unitary government, there is no need to roll for the other branches
+		if (faction.government_centralisation === 28 && [25, 26].includes(faction.government_structures[faction.government_authority])) {
+			// no-op
+		} else {
+			// Determine structure of remaining branches
+			for (const k in faction.government_structures) {
+				if (faction.government_structures[k] === null) {
+					faction.government_structures[k] = this.genGovernmentStructure(faction.government, faction.government_authority, +k);
+				}
+			}
+		}
+	}
+
+	genGovernmentAuthority(government, centralisation)
+	{
+		const dm = this.getGovernmentAuthorityMod(government, centralisation);
+		const roll = this.roll(2, 6, dm, 'Government Authority');
+		// Legislative = L (20)
+		if (roll < 5 || roll === 8) return 20;
+		// Balanced = B (11)
+		if (roll === 7 || roll === 9) return 11;
+		// Judicial = J (18)
+		if (roll === 6 || roll === 11) return 18;
+		// Executive = E (14)
+		return 14;
+	}
+
+	getGovernmentAuthorityMod(government, centralisation)
+	{
+		let dm = 0;
+		// DM+6 for Government 1, 6, A, D, E
+		if ([1, 6, 10, 13, 14].includes(government)) dm += 6;
+		// DM-4 for Government 2
+		if (government === 2) dm -= 4;
+		// DM-2 for Government 3, 5, C
+		if ([3, 5, 12].includes(government)) dm -= 2;
+		// DM+4 for Government B, F
+		if (government === 11 || government === 15) dm += 4;
+		// DM-2 for Confederal government
+		if (centralisation === 12) dm -= 2;
+		// DM+2 for Unitary government
+		if (centralisation === 28) dm += 2;
+		return dm;
+	}
+
+	genGovernmentCentralisation(government, population_concentration, main_gov = null)
+	{
+		const dm = this.getGovernmentCentralisationMod(government, population_concentration, main_gov);
+		const roll = this.roll(2, 6, dm, 'Government Centralisation');
+		if (roll < 6) return 12; // C
+		if (roll < 9) return 15; // F
+		return 28; // U
+	}
+
+	getGovernmentCentralisationMod(government, population_concentration, main_gov = null)
+	{
+		let dm = 0;
+		// DM-1 for Government 2–5
+		if (government > 1 && government < 6) dm -= 1;
+		// DM+1 for Government 6-11 (B)
+		if (government > 5 && government < 12) dm += 1;
+		// DM+1 for Balkanised Governments in addition to any DMs for the actual government type of the individual faction
+		if (main_gov === 7) dm += 1;
+		// DM+2 for Government 12+ (C+)
+		if (government > 11) dm += 2;
+		// DM-1 for PCR 0–3
+		if (population_concentration < 4) dm -= 1;
+		// DM+1 for PCR 7–8
+		if (population_concentration === 7 || population_concentration === 8) dm += 1;
+		// DM+3 for PCR 9
+		if (population_concentration > 8) dm += 3;
+		return dm;
+	}
+
+	genGovernmentStructure(government, authority, branch = null)
+	{
+		let dm = 0;
+		// Government 2 is always Demos (D=13) for authoritative branch or, in a balanced authority, the legislative branch
+		if (government === 2 && (branch === null || (branch === 20 && authority === 11))) return 13;
+		// Governments 8 and 9, for all branches, always use Multiple Councils (M=21)
+		if (government === 8 || government === 9) return 21;
+		// Governments 3, C, or F, for all branches, are always either Single Councel (1-4) or Multiple Council (5-6)
+		if ([3, 12, 15].includes(government)) {
+			return (this.roll(1, 6, 0, 'Government Structure, Single or Multiple Council only') < 5 ? 26 : 21);
+		}
+		// Governments A, B, D, and E, for the authoritative branch only, are either Ruler (1-5) or Single Council (6)
+		if ([10, 11, 13, 14].includes(government)) {
+			if (branch === null) return (this.roll(1, 6, 0, 'Government Structure, Ruler or Single Council only') < 6 ? 25 : 26);
+			// DM+2 otherwise, applied to the Functional Structure roll later
+			dm = 2;
+		}
+		// All other governments with a Legislative authoritative function roll 2D: Demos (2-3), Multiple Councils (4-8), or Single Council (9+)
+		if (branch === null && authority === 11) {
+			const la = this.roll(2, 6, 0, 'Government Structure, Legislative Authority');
+			if (la < 4) return 13;
+			if (la < 9) return 21;
+			return 26;
+		}
+		const roll = this.roll(2, 6, dm, 'Government Structure');
+		if (roll < 4) return 13; // D
+		if ([5, 6, 9, 11].includes(roll)) return 21; // M
+		if ([7, 8].includes(roll)) return 25; // R
+		return 26; // S
+	}
+
+	genFactions(world)
+	{
+		const dm = (world.government === 0 || world.government === 7 ? 1 : (world.government > 9 ? -1 : 0));
+		world.factions = [];
+		let n = this.roll(1, 3, dm, 'Number of Factions');
+		if (n < 2) return;
+		world.factions.push(this.genFactionPrimary(world));
+		for (let i = 1; i < n; i++) {
+			const government = clamp(this.genGovernment(world.population), 0, 15);
+			// Special Case: Each faction on a balkanised world is possibly made up of multiple nations
+			const nations = (world.government === 7 ? this.roll(1, 6, 0, 'Number of Nations') : 1);
+			const strength = this.genFactionStrength(world, nations);
+			const faction = new Faction(world, i + 1, government, strength);
+			faction.n_nations = nations;
+			this.genGovernmentDetails(faction, world.government);
+			world.factions.push(faction);
+			// Each roll of a balkanised faction spawns an additional 1D3+1 factions
+			if (faction.government === 7) n += this.roll(1, 3, 1, 'Additional Factions');
+		}
+	}
+
+	genFactionPrimary(world)
+	{
+		const faction = new Faction(world, 1, world.government, 16);
+		if (world.government === 7) {
+			faction.n_nations = this.roll(1, 6, 0, 'Number of Nations');
+			faction.strength = this.genFactionStrength(world, faction.n_nations);
+		}
+		faction.government_centralisation = world.government_centralisation;
+		faction.government_authority = world.government_authority;
+		faction.government_structures = world.government_structures;
+		return faction;
+	}
+
+	genFactionStrength(world, n_nations)
+	{
+		const roll = this.roll(2, 6, 0, 'Faction Strength');
+		if (roll <  4) return  0; // O, but that's not a valid eHex code...
+		if (roll <  6) return 15; // F
+		if (roll <  8) return 21; // M
+		if (roll < 10) return 22; // N
+		if (roll < 12) return 26; // S
+		return 23; // P
 	}
 
 	genLawLevel(world)
@@ -8462,6 +8687,8 @@ function generateMainWorldData(data, world)
 	history.innerHTML = '';
 	history.appendChild(createElement('h3', 'Main World Results for ' + designation));
 	history.appendChild(createElementGroup('p', [createElement('span', 'Population Profile: ', 'text-bold'), createElement('span', world.getPopulationProfile())]));
+	history.appendChild(createElementGroup('p', [createElement('span', 'Government Profile: ', 'text-bold'), createElement('span', world.getGovernmentProfile())]));
+	world.factions.forEach(faction => history.appendChild(createElementGroup('p', [createElement('span', 'Faction: ', 'text-bold'), createElement('span', faction.getProfileLong())])));
 	history.appendChild(createElement('h4', 'Roll Log', 'small-caps'));
 	history.appendChild(buildRollHistoryTable(factory));
 	row.children[3].innerHTML = world.getProfileShort();
