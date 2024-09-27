@@ -8842,6 +8842,8 @@ function addRollHistoryEntry(body, roll, row_template)
 function displayMainWorldResults(data, flagger, n_stellar = 1)
 {
 	const div = document.getElementById('main_world_candidates');
+	const history = document.getElementById('main_world_history');
+	history.innerHTML = '';
 	if (flagger.candidates.length < 1) {
 		div.classList.add('hide');
 	} else {
@@ -8860,7 +8862,7 @@ function displayMainWorldResults(data, flagger, n_stellar = 1)
 			btn.title = 'Click to generate Social characteristics (PGL etc.) for this world';
 			btn.addEventListener('click', function(e) {
 				e.preventDefault();
-				return generateMainWorldData(data, entry);
+				return generateMainWorldData(data, entry, history);
 			});
 			let j = 0;
 			row.id = 'main_world-' + entry.getDesignation(2);
@@ -8885,12 +8887,11 @@ function displayMainWorldResults(data, flagger, n_stellar = 1)
 	}
 }
 
-function generateMainWorldData(data, world)
+function generateMainWorldData(data, world, history)
 {
 	const designation = world.getDesignation(2);
 	log('Generating Main World Data for ' + designation);
 	const factory = new MainWorldFactory(data);
-	const history = document.getElementById('main_world_history');
 	const row = document.getElementById('main_world-' + designation);
 	factory.generate(world);
 	history.classList.remove('hide');
