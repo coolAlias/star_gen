@@ -94,6 +94,9 @@
 			.min-w-half {
 				min-width: 50%;
 			}
+			.w-max-min {
+				max-width: min-content;
+			}
 			.center {
 				text-align: center;
 			}
@@ -309,6 +312,9 @@
 							<h3 class="small-caps mb-4">Main World Options</h3>
 							<div class="input_container">
 								<label for="pop_curve"><input id="pop_curve" name="pop_curve" type="checkbox" checked /> Population A+ Variant</label>
+							</div>
+							<div class="input_container">
+								<label for="n_gov_rel"><input id="n_gov_rel" class="center w-max-min" name="n_gov_rel" type="number" min="0" max="25" value="5" step="1" /> Maximum Faction Relationships</label>
 							</div>
 						</div>
 					</div>
@@ -2302,17 +2308,20 @@ class Faction
 		this.population_concentration = world.population_concentration;
 		this.government = government;
 		this.government_authority = -1;
+		this.relationships = [];
 		this.strength = strength;
 	}
 
 	getProfileLong()
 	{
 		const gov = this.getGovernmentProfile();
+		const rel = this.getRelationshipProfile();
 		return convertToRoman(this.index)
 			+ '-' + toHexCode(this.government)
 			+ '-' + (this.strength === 0 ? 'O' : toHexCode(this.strength))
 			+ (gov.length > 0 ? ': ' + gov : '')
-			+ (this.n_nations > 1 ? ': ' + this.n_nations + ' Nations' : '');
+			+ (this.n_nations > 1 ? ': ' + this.n_nations + ' Nations' : '')
+			+ (rel.length > 0 ? ': ' + rel : '');
 	}
 
 	getGovernmentProfile()
@@ -2329,6 +2338,15 @@ class Faction
 			+ toHexCode(this.government_authority)
 			+ (this.government_authority === 11 ? 'B' : toHexCode(this.government_structures[this.government_authority]))
 			+ (subs.length > 0 ? '-' + subs.join('-') : '');
+	}
+
+	getRelationshipProfile()
+	{
+		const main = convertToRoman(this.index);
+		return this.relationships
+			.map((v, k) => (v ? main + '+' + convertToRoman(k) + '=' + v : ''))
+			.filter(v => v.length > 0)
+			.join(', ');
 	}
 }
 
@@ -7713,11 +7731,13 @@ class MainWorldFactory extends AbstractFactory
 	/**
 	 * @param FormData options:
 	 *   @option bool pop_curve True to use the Population A Variant rule when determining P Value for worlds with Population A+
+	 *   @option int n_gov_rel Maximum number of factions for which relationships will be determined
 	 */
 	constructor(options)
 	{
 		super();
 		this.pop_curve = options.has('pop_curve');
+		this.n_gov_rel = +options.get('n_gov_rel');
 	}
 
 	generate(world)
@@ -7727,6 +7747,7 @@ class MainWorldFactory extends AbstractFactory
 		this.genPopulationDetails(world);
 		this.genGovernmentDetails(world);
 		this.genFactions(world);
+		this.genFactionRelationships(world);
 	}
 
 	genBaseSocial(world)
@@ -8082,6 +8103,28 @@ class MainWorldFactory extends AbstractFactory
 		faction.government_authority = world.government_authority;
 		faction.government_structures = world.government_structures;
 		return faction;
+	}
+
+	genFactionRelationships(world)
+	{
+		for (let i = 0; i < this.n_gov_rel && i < world.factions.length; i++) {
+			const a = world.factions[i];
+			world.factions.forEach(b => {
+				if (b.index !== a.index) {
+					a.relationships[b.index] = this.genFactionRelationship(a, b);
+				}
+			});
+		}
+	}
+
+	genFactionRelationship(a, b)
+	{
+		let dm = 0;
+		// DM+1 if either faction is the ruling authority (i.e. Strength G)
+		if (a.strength === 16 || b.strength === 16) dm++;
+		// DM-1 if the factions have the same government code
+		if (a.government === b.government) dm--;
+		return clamp(this.roll(1, 6, dm, 'Faction Relationship: ' + convertToRoman(a.index) + ' vs ' + convertToRoman(b.index)), 0, 9);
 	}
 
 	genFactionStrength(world, n_nations)
