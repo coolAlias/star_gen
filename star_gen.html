@@ -8632,6 +8632,7 @@ function convertToRoman(number)
  */
 function fromHexCode(hex)
 {
+	if (typeof hex === 'number') hex = ''+hex;
 	if (hex.length !== 1) throw new SyntaxError('eHex codes must be exactly 1 character long: ' + hex);
 	const code = hex.toUpperCase().codePointAt(0);
 	// Digits 0-9
