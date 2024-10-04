@@ -130,6 +130,18 @@
 			.text-sm {
 				font-size: 0.9rem;
 			}
+			.cursor-pointer:hover {
+				cursor: pointer;
+			}
+			.z-panel {
+				border: black solid 1px;
+				border-radius: 0.25rem;
+				background-color: white;
+				list-style: none;
+				margin: 0px;
+				padding: 4px 8px;
+				position: absolute;
+			}
 			@media (min-width: 768px) {
 				.md\:basis-1\/2 {
 					flex-basis: 50%;
@@ -417,6 +429,7 @@
 			<table>
 				<thead>
 					<tr id="planet_tbl_header">
+						<th></th>
 						<th>Primary</th>
 						<th>Object</th>
 						<th>Mass &CirclePlus;</th>
@@ -448,6 +461,7 @@
 			</table>
 			<template id="planet_tbl_template">
 				<tr>
+					<td></td>
 					<td></td>
 					<td></td>
 					<td></td>
@@ -3240,11 +3254,32 @@ class Atmosphere
 		case 11: return 'Corrosive, ' + this.getDensityName();
 		case 12: return 'Insidious, ' + this.getDensityName();
 		case 14: return 'Low';
-		case 15: return 'Unusual';
+		case 15:
+			const sub_a = this.getUnusualSubtypeName(this.subtype);
+			const sub_b = this.getUnusualSubtypeName(this.subtype_b);
+			return 'Unusual' + (sub_a.length > 0 ? ', ' + sub_a : '') + (sub_b.length > 0 ? ', ' + sub_b : '');
 		case 16: return 'Gas, Helium';
 		case 17: return 'Gas, Hydrogen';
 		}
 		return this.getDensityName();
+	}
+
+	getUnusualSubtypeName(subtype)
+	{
+		switch (subtype) {
+		case 1: return this.getDensityName();
+		case 2: return this.getDensityName();
+		case 3: return this.getDensityName();
+		case 4: return 'Ellipsoid';
+		case 5: return 'High Radiation';
+		case 6: return 'Layered';
+		case 7: return 'Panthalassic';
+		case 8: return 'Steam';
+		case 9: return 'Variable Pressure';
+		case 10: return 'Variable Composition';
+		case 15: return 'Other';
+		}
+		return '';
 	}
 }
 
@@ -8783,6 +8818,7 @@ function addPlanetTableRow(entry, body, template, n_stellar = 1, is_moon = false
 	const escape = entry.getEscapeVelocity();
 	const mass = entry.getTotalMass();
 	let j = 0;
+	row.children[j++].appendChild(getPlanetDetailsPanelContainer(entry));
 	row.children[j++].innerHTML = (is_moon && sub_moons ? '' : entry.getHostStar().getDesignation(n_stellar));
 	if (is_moon && sub_moons) row.children[j].classList.add('right');
 	row.children[j++].innerHTML = entry.getDesignation(is_moon && sub_moons ? 0 : 1);
@@ -8813,6 +8849,111 @@ function addPlanetTableRow(entry, body, template, n_stellar = 1, is_moon = false
 	}
 	row.title = 'Main World Candidacy Rating: ' + entry.main_world_rating;
 	body.appendChild(row);
+}
+
+function getPlanetDetailsPanelContainer(entry)
+{
+	const container = document.createElement('div');
+	const btn = document.createElement('a');
+	const panel = getPlanetDetailsPanel(entry);
+	btn.className = 'cursor-pointer';
+	btn.innerHTML = '&#x25B7;';
+	btn.title = 'Click to view detailed profile information';
+	btn.addEventListener('click', function(e) {
+		e.preventDefault();
+		if (btn.classList.contains('open')) {
+			closePlanetDetailsPanel(btn, panel);
+		} else {
+			openPlanetDetailsPanel(btn, panel);
+			window.addEventListener("click", function clickedOutsidePanel(event) {
+				if (!btn.contains(event.target) && !panel.contains(event.target)) {
+					closePlanetDetailsPanel(btn, panel);
+					this.removeEventListener('click', clickedOutsidePanel);
+				}
+			});
+		}
+	});
+	container.appendChild(btn);
+	container.appendChild(panel);
+	container.className = 'relative';
+	return container;
+}
+
+function getPlanetDetailsPanel(entry)
+{
+	const container = document.createElement('ul');
+	container.className = 'hide z-panel';
+	if (entry.type === PLANET_GAS) {
+		const gas_size = (entry.size < 1 ? 'Small' : (entry.gas_size > 1 ? 'Large' : 'Medium'));
+		container.appendChild(createElementGroup('li', [createElement('span', 'Size: ', 'text-bold'), createElement('span', gas_size)]));
+		container.appendChild(createElementGroup('li', [createElement('span', 'Diameter: ', 'text-bold'), createElement('span', entry.getTotalDiameter())]));
+		return container;
+	}
+	if (entry.type === PLANET_BELT || entry.type === PLANET_RING) {
+		const span_label = (entry.type === PLANET_BELT ? 'Belt' : 'Ring');
+		container.appendChild(createElementGroup('li', [createElement('span', span_label + ' Span: ', 'text-bold'), createElement('span', entry.span.toFixed(2))]));
+		container.appendChild(createElementGroup('li', [createElement('span', 'Inner Edge: ', 'text-bold'), createElement('span', (entry.orbit - entry.span / 2).toFixed(2))]));
+		container.appendChild(createElementGroup('li', [createElement('span', 'Outer Edge: ', 'text-bold'), createElement('span', (entry.orbit + entry.span / 2).toFixed(2))]));
+	}
+	if (entry.type === PLANET_BELT) {
+		container.appendChild(createElement('li', 'Belt Composition', 'text-bold'));
+		const ul_comp = document.createElement('ul');
+		ul_comp.appendChild(createElementGroup('li', [createElement('span', (''+format(entry.composition_m, 2)).padStart(2, '0')), createElement('span', '% metallic')]));
+		ul_comp.appendChild(createElementGroup('li', [createElement('span', (''+format(entry.composition_s, 2)).padStart(2, '0')), createElement('span', '% stony')]));
+		ul_comp.appendChild(createElementGroup('li', [createElement('span', (''+format(entry.composition_c, 2)).padStart(2, '0')), createElement('span', '% carbonaceous')]));
+		ul_comp.appendChild(createElementGroup('li', [createElement('span', (''+format(entry.composition_o, 2)).padStart(2, '0')), createElement('span', '% other')]));
+		container.appendChild(ul_comp);
+		container.appendChild(createElementGroup('li', [createElement('span', 'Belt Bulk: ', 'text-bold'), createElement('span', entry.bulk)]));
+		container.appendChild(createElementGroup('li', [createElement('span', 'Resource Rating: ', 'text-bold'), createElement('span', toHexCode(entry.resource_rating))]));
+		container.appendChild(createElementGroup('li', [createElement('span', 'Bodies, Large: ', 'text-bold'), createElement('span', entry.n_bodies_large)]));
+		container.appendChild(createElementGroup('li', [createElement('span', 'Bodies, Small: ', 'text-bold'), createElement('span', entry.n_bodies_small)]));
+	}
+	if (entry.type === PLANET_BELT || entry.type === PLANET_RING) {
+		return container;
+	}
+	container.appendChild(createElementGroup('li', [createElement('span', 'Habitability Rating: ', 'text-bold'), createElement('span', toHexCode(entry.habitability))]));
+	container.appendChild(createElementGroup('li', [createElement('span', 'Resource Rating: ', 'text-bold'), createElement('span', toHexCode(entry.resource_rating))]));
+	container.appendChild(createElementGroup('li', [createElement('span', 'Hydrographics %: ', 'text-bold'), createElement('span', entry.hydrographics_percentage + '%')]));
+	container.appendChild(createElementGroup('li', [createElement('span', 'Surface Distribution: ', 'text-bold'), createElement('span', toHexCode(entry.surface_distribution))]));
+	if (entry.atmosphere) {
+		container.appendChild(createElement('li', 'Atmosphere Details', 'text-bold'));
+		const ul_atmo = document.createElement('ul');
+		ul_atmo.appendChild(createElementGroup('li', [createElement('span', 'Type: ', 'text-bold'), createElement('span', entry.atmosphere.getTypeName())]));
+		ul_atmo.appendChild(createElementGroup('li', [createElement('span', 'Total Pressure: ', 'text-bold'), createElement('span', entry.atmosphere.bar.toFixed(3))]));
+		ul_atmo.appendChild(createElementGroup('li', [createElement('span', 'Partial Oxygen: ', 'text-bold'), createElement('span', entry.atmosphere.ppo.toFixed(3))]));
+		entry.atmosphere.taints.forEach(taint => {
+			ul_atmo.appendChild(createElementGroup('li', [createElement('span', 'Taint: ', 'text-bold'), createElement('span', taint.getName())]));
+			ul_atmo.appendChild(createElementGroup('li', [createElement('span', 'Taint Severity: ', 'text-bold'), createElement('span', taint.severity)]));
+			ul_atmo.appendChild(createElementGroup('li', [createElement('span', 'Taint Persistence: ', 'text-bold'), createElement('span', taint.persistence)]));
+		});
+		container.appendChild(ul_atmo);
+	}
+	if (entry.biomass > -1) {
+		container.appendChild(createElement('li', 'Biological Details', 'text-bold'));
+		const ul_bio = document.createElement('ul');
+		ul_bio.appendChild(createElementGroup('li', [createElement('span', 'Biomass: ', 'text-bold'), createElement('span', toHexCode(entry.biomass))]));
+		ul_bio.appendChild(createElementGroup('li', [createElement('span', 'Complexity: ', 'text-bold'), createElement('span', toHexCode(entry.biocomplexity))]));
+		ul_bio.appendChild(createElementGroup('li', [createElement('span', 'Diversity: ', 'text-bold'), createElement('span', toHexCode(entry.biodiversity))]));
+		ul_bio.appendChild(createElementGroup('li', [createElement('span', 'Compatibility: ', 'text-bold'), createElement('span', toHexCode(entry.biocompatibility))]));
+		const sophonts = (entry.sophont_presence < 0 ? 'None' : (entry.sophont_presence > 0 ? 'Living' : 'Extinct'));
+		ul_bio.appendChild(createElementGroup('li', [createElement('span', 'Sophonts: ', 'text-bold'), createElement('span', sophonts)]));
+		container.appendChild(ul_bio);
+	}
+	return container;
+}
+
+function closePlanetDetailsPanel(btn, panel)
+{
+	btn.classList.remove('open');
+	btn.innerHTML = '&#x25B7;';
+	panel.classList.add('hide');
+}
+
+function openPlanetDetailsPanel(btn, panel)
+{
+	btn.classList.add('open');
+	btn.innerHTML = '&#x25BD;';
+	panel.classList.remove('hide');
 }
 
 function buildRollHistoryTable(entry)
