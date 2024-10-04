@@ -5240,12 +5240,13 @@ class StarSystemFactory extends AbstractFactory
 
 	determineSecondarySpreadMax(system, star)
 	{
+		const sys_min = system.getMinimumOrbitSpread();
 		const total_orbits = star.getTotalAllowedOrbits();
 		// The "number of worlds" refers to the star or pair in question
-		if ((total_orbits / star.n_bodies) > system.orbit_spread) {
+		if ((total_orbits / star.n_bodies) > sys_min) {
 			return round(total_orbits / (1 + star.n_bodies + star.n_empty), 3);
 		}
-		return 0;
+		return sys_min;
 	}
 
 	/**
