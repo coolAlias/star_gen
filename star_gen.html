@@ -3510,7 +3510,7 @@ class StarFactory extends AbstractFactory
 		// Special Case: Classes Ia and Ib
 		if (entry.endsWith('IA')) return 0;
 		if (entry.endsWith('IB')) return 1;
-		return convertFromRoman(entry.substring(3));
+		return convertFromRoman(entry.substring(2).replace(/\s/g, ''));
 	}
 
 	/**
