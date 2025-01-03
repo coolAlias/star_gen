@@ -2545,7 +2545,7 @@ class World extends OrbitingBody
 
 	getLawProfile()
 	{
-		const data = [this.getLawSystemProfile(), this.getLawLevelProfile()];
+		const data = [this.getLawLevelProfile(), this.getLawSystemProfile()];
 		return data.filter(v => v.length > 0).join(' ');
 	}
 
