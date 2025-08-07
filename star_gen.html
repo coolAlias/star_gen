@@ -7342,7 +7342,8 @@ class AtmosphereFactory extends AbstractFactory
 			if (world.getHzcoOrbit() < world.getHzcoPlus(-3)) {
 				const dm = (density > 4 ? 1 : 0);
 				const roll_b = this.roll(1, 6, dm, 'Atmosphere Type: Orbit < HZCO-3');
-				if (roll_b === 1) return new Atmosphere(1, density, irritant);
+				// Special Case: reset density to -1 when atmosphere type changes to Trace (1)
+				if (roll_b === 1) return new Atmosphere(1, -1, irritant);
 				if (roll_b === 2) return new Atmosphere(10, density, irritant); // Exotic
 				if (roll_b > 5) return new Atmosphere(12, density, irritant); // Insidious
 				return new Atmosphere(11, density, irritant); // Corrosive
