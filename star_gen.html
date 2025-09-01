@@ -1694,6 +1694,7 @@ class OrbitingBody
 		this.orbit_spread_max = 0;
 		// Optional roll history from factory generation
 		this.history = [];
+		this.system = null;
 	}
 
 	getDesignation(n_stars = 1)
@@ -2169,6 +2170,7 @@ class StarSystem
 		let groups = []
 		for (let i = 0; i < this.stars.length; i++) {
 			const star = this.stars[i];
+			star.system = this;
 			const prev = (groups.length > 0 ? groups[groups.length - 1] : null);
 			// Determine max allowable Orbit#s centered around any secondary stars (already determined for stars with companions)
 			if (!star.primary && star.companion === null) {
@@ -2788,6 +2790,133 @@ class World extends OrbitingBody
 	isInTwilightZone()
 	{
 		return this.orbit_lock > 0 && this.period_solar === null;
+	}
+
+	getTechnologyProfile()
+	{
+		if(this.tl < 0) return 'TBD';
+		if(this.technology_high < 0) return 'TBD';
+		return toHexCode(this.technology_high)
+		    + '-' + toHexCode(this.technology_low)
+			+ '-' + toHexCode(this.technology_energy)
+			+ ''  + toHexCode(this.technology_electronics)
+			+ ''  + toHexCode(this.technology_manufacturing)
+			+ ''  + toHexCode(this.technology_electronics)
+			+ ''  + toHexCode(this.technology_medical)
+			+ ''  + toHexCode(this.technology_environmental)
+			+ '-' + toHexCode(this.technology_land_transport)
+			+ ''  + toHexCode(this.technology_water_transport)
+			+ ''  + toHexCode(this.technology_air_transport)
+			+ ''  + toHexCode(this.technology_air_transport)
+			+ ''  + toHexCode(this.technology_space_transport)
+			+ '-' + toHexCode(this.technology_military_personal)
+			+ ''  + toHexCode(this.technology_military_heavy)
+	}
+
+	getCultureProfile()
+	{
+		if(this.population < 1) return '0';
+		if(this.culture_diversity < 0) return 'TBD';
+		return toHexCode(this.culture_diversity)
+			+ ''  + toHexCode(this.culture_xenophilia)
+			+ ''  + toHexCode(this.culture_uniqueness)
+			+ ''  + toHexCode(this.culture_symbology)
+			+ '-' + toHexCode(this.culture_cohesion)
+			+ ''  + toHexCode(this.culture_progressiveness)
+			+ ''  + toHexCode(this.culture_expansionism)
+			+ ''  + toHexCode(this.culture_militancy);
+	}
+
+	getEconomyProfile()
+	{
+		const trades = this.getTradeProfile();
+		let prof = trades.replaceAll(',','');
+		if(trades.length > 0) prof += ', ';
+		prof += toHexCode(this.importance) + ', ';
+		prof += toHexCode(this.factor_resource) + '' + toHexCode(this.factor_labour) + '' + toHexCode(this.factor_infrastructure);
+		if(this.factor_efficiency >= 0) prof += '+' + toHexCode(this.factor_efficiency) + ', ';
+		else prof += this.factor_efficiency + ', ';
+		prof += this.economy_resource_units + ', ';
+		prof += this.economy_gwp_per_capita + ', ';
+		prof += this.economy_wtn + ', ';
+		prof += this.economy_inequality + ', ';
+		prof += this.economy_development;
+		return prof;
+	}
+
+	getStarportProfile()
+	{
+		if(this.starport < 0) return 'TBD';
+		let prof = toHexCode(this.starport) + '-H';
+		
+		// Custom Starport Profile to add more info
+		/*
+		if(this.highport_capacity > 0)
+		{
+			let l = Math.floor(Math.log10(this.highport_capacity));
+			let h = Math.floor(this.highport_capacity / Math.pow(10,l));
+			prof += h + '' + toHexCode(l);
+		}
+		else
+		{
+			prof += '00';
+		}
+		
+		prof += ':D';
+		
+		if(this.downport_capacity > 0)
+		{
+			let l = Math.floor(Math.log10(this.downport_capacity));
+			let h = Math.floor(this.downport_capacity / Math.pow(10,l));
+			prof += h + '' + toHexCode(l);
+		}
+		else
+		{
+			prof += '00';
+		}
+		
+		prof += ':S';
+		
+		if(this.shipyard_capacity > 0)
+		{
+			let l = Math.floor(Math.log10(this.shipyard_capacity));
+			let h = Math.floor(this.shipyard_capacity / Math.pow(10,l));
+			prof += h + '' + toHexCode(l);
+			l = Math.floor(Math.log10(this.shipyard_annual_output));
+			h = Math.floor(this.shipyard_annual_output / Math.pow(10,l));
+			prof += h + '' + toHexCode(l);
+		}
+		else
+		{
+			prof += '0000';
+		}
+		*/
+		
+		// End of custom info
+		if(this.highport_capacity > 0) prof += 'Y';
+		else prof += 'N';
+		prof += ':D';
+		if(this.downport_capacity > 0) prof += 'Y';
+		else prof += 'N';
+		
+		prof += ':';
+		if(this.starport_importance >= 0) prof += '+' + this.starport_importance;
+		else prof += this.starport_importance;
+		return prof;
+	}
+
+	getMilitaryProfile()
+	{
+		if (this.military_enforcement < 0) return 'TBD';
+		return toHexCode(this.military_enforcement)
+		    + ''  + toHexCode(this.military_militia)
+		    + ''  + toHexCode(this.military_army)
+		    + ''  + toHexCode(this.military_wet_navy)
+		    + ''  + toHexCode(this.military_air_force)
+			+ '-' + toHexCode(this.military_system_defence)
+		    + ''  + toHexCode(this.military_navy)
+		    + ''  + toHexCode(this.military_marines)
+			+ ':' + Math.floor(this.military_budget_percent * 10000) / 100.0;
 	}
 }
 
@@ -7817,6 +7946,11 @@ class MainWorldFactory extends AbstractFactory
 		this.genLawDetails(world);
 		this.genFactions(world);
 		this.genFactionRelationships(world);
+		this.genTechnologyDetails(world);
+		this.genCulture(world);
+		this.genEconomy(world);
+		this.genStarportDetails(world);
+		this.genMilitary(world);
 	}
 
 	genBaseSocial(world)
@@ -8464,6 +8598,1060 @@ class MainWorldFactory extends AbstractFactory
 		if (world.technology > 11) dm += 2;
 		return this.roll(2, 6, dm, 'Highport') > target;
 	}
+	
+	genTechnologyEnergy(world,trades)
+	{
+		let dm = 0;
+		if(world.population >= 9) dm += 1;
+		if(trades.indexOf('In') > -1) dm += 1;
+		world.technology_energy = Math.floor(clamp(world.technology_high + getTLM(this.roll(2,6,0,'Energy TL')) + dm,world.technology_high / 2,world.technology_high * 1.2));
+	}
+	
+	genTechnologyElectronics(world,trades)
+	{
+		let dm = 0;
+		if(world.population <= 5) dm += 1;
+		if(world.population >= 9) dm -= 1;
+		if(trades.indexOf('In') > -1) dm += 1;
+		world.technology_electronics = clamp(world.technology_high + getTLM(this.roll(2,6,0,'Electronics TL')) + dm,world.technology_high - 3,world.technology_high + 1);
+	}
+	
+	genTechnologyManufacturing(world,trades)
+	{
+		let dm = 0;
+		if(world.population <= 6) dm -= 1;
+		if(world.population >= 8) dm += 1;
+		if(trades.indexOf('In') > -1) dm += 1;
+		world.technology_manufacturing = clamp(world.technology_high + getTLM(this.roll(2,6,0,'Manufacturing TL')) + dm,world.technology_electronics - 2,Math.max(world.technology_energy,world.technology_electronics));
+	}
+	
+	genTechnologyMedical(world,trades)
+	{
+		let dm = 0;
+		if(trades.indexOf('Ri') > -1) dm += 1;
+		if(trades.indexOf('Po') > -1) dm -= 1;
+		let upper = world.technology_electronics;
+		let lower = 0;
+		if(world.starport == 10) lower = 6;
+		if(world.starport == 11) lower = 4;
+		if(world.starport == 12) lower = 2;
+		world.technology_medical = clamp(world.technology_electronics + getTLM(this.roll(2,6,0,'Medical TL')) + dm,lower,upper);
+	}
+	
+	genTechnologyEnvironmental(world,trades)
+	{
+		let dm = 0;
+		if(world.habitability < 8) dm = 8 - world.habitability;
+		let upper = world.technology_energy;
+		let lower = Math.max(0,world.technology_energy - 5);
+		world.technology_environmental = clamp(world.technology_manufacturing + getTLM(this.roll(2,6,0,'Environmental TL')) + dm,lower,upper);
+	}
+	
+	genTechnologyQOL(world,trades)
+	{
+		this.genTechnologyEnergy(world,trades);
+		this.genTechnologyElectronics(world,trades);
+		this.genTechnologyManufacturing(world,trades);
+		this.genTechnologyMedical(world,trades);
+		this.genTechnologyEnvironmental(world,trades);
+	}
+	
+	genTechnologyLandTransport(world,trades)
+	{
+		let dm = 0;
+		if(world.hydrographics == 10) dm -= 1;
+		if(world.population_concentration <= 2) dm += 1;
+		let upper = world.technology_energy;
+		let lower = Math.max(0,world.technology_energy - 5);
+		world.technology_land_transport = clamp(world.technology_energy + getTLM(this.roll(2,6,0,'Land Transport TL')) + dm,lower,upper);
+	}
+	
+	genTechnologyWaterTransport(world,trades)
+	{
+		let dm = 0;
+		if(world.hydrographics == 0) dm -= 2;
+		if(world.hydrographics == 8) dm += 1;
+		if(world.hydrographics >= 9) dm += 2;
+		if(world.population_concentration <= 2) dm += 1;
+		let upper = world.technology_energy;
+		let lower = Math.max(0,world.technology_energy - 5);
+		if(world.hydrographics == 0) lower = 0;
+		world.technology_water_transport = clamp(world.technology_energy + getTLM(this.roll(2,6,0,'Water Transport TL')) + dm,lower,upper);
+	}
+	
+	genTechnologyAirTransport(world,trades)
+	{
+		let dm = 0;
+		if(world.technology < 8)
+		{
+			if(world.atmosphere <= 3) dm -= 2;
+			if(world.atmosphere == 4 || world.atmosphere == 5) dm -= 1;
+			if(world.atmosphere == 8 || world.atmosphere == 9 || world.atmosphere == 13) dm += 1;
+		}
+		let upper = world.technology_energy;
+		let lower = Math.max(0,world.technology_energy - 5);
+		if(world.hydrographics == 0) lower = 0;
+		world.technology_air_transport = clamp(world.technology_energy + getTLM(this.roll(2,6,0,'Air Transport TL')) + dm,lower,upper);
+		if(world.atmosphere == 0 && world.technology < 8) world.technology_air_transport = 0;
+	}
+	
+	genTechnologySpaceTransport(world,trades)
+	{
+		let dm = 0;
+		if(world.size <= 1) dm += 2
+		if(world.population <= 5) dm -= 1;
+		if(world.population >= 9) dm += 1;
+		if(world.starport == 10) dm += 2;
+		if(world.starport == 11) dm += 1;
+		let upper = Math.min(world.technology_energy,world.technology_manufacturing);
+		let lower = Math.min(world.technology_energy,world.technology_manufacturing) - 3;
+		world.technology_space_transport = clamp(world.technology_manufacturing + getTLM(this.roll(2,6,0,'Space Transport TL')) + dm,lower,upper);
+	}
+	
+	genTechnologyTransportation(world,trades)
+	{
+		this.genTechnologyLandTransport(world,trades);
+		this.genTechnologyWaterTransport(world,trades);
+		this.genTechnologyAirTransport(world,trades);
+		this.genTechnologySpaceTransport(world,trades);
+	}
+	
+	genTechnologyPersonalMilitary(world,trades)
+	{
+		let dm = 0;
+		if(world.government == 0 || world.government == 7) dm += 2;
+		if(world.law_level == 0 || world.law_level >= 13) dm += 2;
+		if((world.law_level >= 1 && world.law_level <= 4) || (world.law_level >= 9 && world.law_level <= 12)) dm += 1;
+		let upper = world.technology_electronics;
+		let lower = 0;
+		if(world.law_weapons == 0) lower = world.technology_manufacturing;
+		world.technology_military_personal = clamp(world.technology_manufacturing + getTLM(this.roll(2,6,0,'Personal Military TL')) + dm,lower,upper);
+	}
+	
+	genTechnologyHeavyMilitary(world,trades)
+	{
+		let dm = 0;
+		if(world.population <= 6) dm -= 1;
+		if(world.population >= 8) dm += 1;
+		if(world.government == 7 || world.government == 10 || world.government == 11 || world.government == 15) dm += 2;
+		if(world.law_level >= 13) dm += 2;
+		if(trades.indexOf('In') > -1) dm += 1;
+		let upper = world.technology_manufacturing;
+		let lower = 0;
+		world.technology_military_heavy = clamp(world.technology_manufacturing + getTLM(this.roll(2,6,0,'Heavy Military TL')) + dm,lower,upper);
+	}
+	
+	genTechnologyMilitary(world,trades)
+	{
+		this.genTechnologyPersonalMilitary(world,trades);
+		this.genTechnologyHeavyMilitary(world,trades);
+	}
+	
+	genTechnologyDetails(world)
+	{
+		const trades = world.getTradeProfile();
+		world.technology_high = world.technology;
+		let dm = 0;
+		if(world.population <= 5) dm += 1;
+		if(world.population >= 9) dm -= 1;
+		if(world.government == 0) dm -= 1;
+		if(world.government == 6) dm -= 1;
+		if(world.government == 13) dm -= 1;
+		if(world.government == 14) dm -= 1;
+		if(world.government == 5) dm += 1;
+		if(world.government == 7) dm -= 2;
+		if(world.population_concentration <= 2) dm -= 1;
+		if(world.population_concentration >= 7) dm += 1;
+		world.technology_low = clamp(world.technology_high + getTLM(this.roll(2,6,0,'Technology Details')) + dm,world.technology_high / 2,world.technology_high);
+		
+		this.genTechnologyQOL(world,trades);
+		this.genTechnologyTransportation(world,trades);
+		this.genTechnologyMilitary(world,trades);
+	}
+	
+	genCultureDiversity(world)
+	{
+		let dm = 0;
+		if(world.population <= 5) dm -= 2;
+		if(world.population >= 9) dm += 2;
+		if(world.government <= 2) dm += 1;
+		if(world.government == 7) dm += 4;
+		if(world.government >= 13 && world.government <= 16) dm -= 4;
+		if(world.law_level <= 4) dm += 1;
+		if(world.law_level >= 10) dm -= 1;
+		if(world.population_concentration <= 3) dm += 1;
+		if(world.population_concentration >= 7) dm -= 2;
+		world.culture_diversity = Math.max(1,this.roll(2,6,0,'Culture Diversity') + dm);
+	}
+	
+	genCultureXenophilia(world)
+	{
+		let dm = 0;
+		if(world.population <= 5) dm -= 1;
+		if(world.population >= 9) dm += 2;
+		if(world.government <= 2) dm += 1;
+		if(world.government == 13 || world.government == 14) dm -= 2;
+		if(world.law_level >= 10) dm -= 2;
+		if(world.starport == 10) dm += 2;
+		if(world.starport == 11) dm += 1;
+		if(world.starport == 12) dm -= 1;
+		if(world.starport == 13) dm -= 2;
+		if(world.starport == 31) dm -= 4;
+		if(world.culture_diversity <= 3) dm -= 2;
+		if(world.culture_diversity >= 12) dm += 1;
+		world.culture_xenophilia = Math.max(1,this.roll(2,6,0,'Culture Xenophilia') + dm);
+	}
+	
+	genCultureUniqueness(world)
+	{
+		let dm = 0;
+		if(world.starport == 10) dm -= 2;
+		if(world.starport == 11) dm -= 1;
+		if(world.starport == 12) dm += 1;
+		if(world.starport == 13) dm += 2;
+		if(world.starport == 31) dm += 4;
+		if(world.culture_diversity <= 3) dm += 2;
+		if(world.culture_xenophilia >= 9 && world.culture_xenophilia <= 11) dm -= 1;
+		if(world.culture_xenophilia >= 12) dm -= 2;
+		world.culture_uniqueness = Math.max(1,this.roll(2,6,0,'Culture Uniqueness') + dm);
+	}
+	
+	genCultureSymbology(world)
+	{
+		let dm = 0;
+		if(world.government == 13 || world.government == 14) dm += 2;
+		if(world.technology <= 1) dm -= 3;
+		if(world.technology <= 3 && world.technology >= 2) dm -= 1;
+		if(world.technology <= 11 && world.technology >= 9) dm += 2;
+		if(world.technology >= 12) dm += 4;
+		if(world.culture_uniqueness >= 9 && world.culture_uniqueness <= 11) dm += 1;
+		if(world.culture_uniqueness >= 12) dm += 3;
+		world.culture_symbology = Math.max(1,this.roll(2,6,0,'Culture Symbology') + dm);
+	}
+	
+	genCultureCohesion(world)
+	{
+		let dm = 0;
+		if(world.government == 3 || world.government == 12) dm += 2;
+		if(world.government == 5 || world.government == 6 || world.government == 9) dm += 1;
+		if(world.law_level <= 2) dm -= 2;
+		if(world.law_level >= 10) dm += 2;
+		if(world.population_concentration <= 3) dm -= 2;
+		if(world.population_concentration >= 7) dm += 2;
+		if(world.culture_diversity <= 2) dm += 4;
+		if(world.culture_diversity >= 3 && world.culture_diversity <= 5) dm += 2;
+		if(world.culture_diversity >= 9 && world.culture_diversity <= 11) dm -= 2;
+		if(world.culture_diversity >= 12) dm -= 4;
+		world.culture_cohesion = Math.max(1,this.roll(2,6,0,'Culture Cohesion') + dm);
+	}
+	
+	genCultureProgressiveness(world)
+	{
+		let dm = 0;
+		if(world.population >= 6 && world.population <= 8) dm -= 1;
+		if(world.population >= 9) dm -= 2;
+		if(world.government == 5) dm += 1;
+		if(world.government == 11) dm -= 2;
+		if(world.government == 13 || world.government == 14) dm -= 6;
+		if(world.law_level >= 9 && world.law_level <= 11) dm -= 1;
+		if(world.law_level >= 12) dm -= 4;
+		if(world.culture_diversity <= 3) dm -= 2;
+		if(world.culture_diversity >= 12) dm += 1;
+		if(world.culture_xenophilia <= 5) dm -= 1;
+		if(world.culture_xenophilia >= 9) dm += 2;
+		if(world.culture_cohesion <= 5) dm += 2;
+		if(world.culture_cohesion >= 9) dm -= 2;
+		world.culture_progressiveness = Math.max(1,this.roll(2,6,0,'Culture Progressiveness') + dm);
+	}
+	
+	genCultureExpansionism(world)
+	{
+		let dm = 0;
+		if(world.government == 10 || world.government >= 12) dm += 2;
+		if(world.culture_diversity <= 3) dm += 3;
+		if(world.culture_diversity >= 12) dm -= 3;
+		if(world.culture_xenophilia <= 5) dm += 1;
+		if(world.culture_xenophilia >= 9) dm -= 2;
+		world.culture_expansionism = Math.max(1,this.roll(2,6,0,'Culture Expansionism') + dm);
+	}
+	
+	genCultureMilitancy(world)
+	{
+		let dm = 0;
+		if(world.government >= 10) dm += 3;
+		if(world.law_level >= 9 && world.law_level <= 11) dm += 1;
+		if(world.law_level >= 12) dm += 2;
+		if(world.culture_xenophilia <= 5) dm += 1;
+		if(world.culture_xenophilia >= 9) dm -= 2;
+		if(world.culture_expansionism <= 5) dm -= 1;
+		if(world.culture_expansionism >= 9 && world.culture_expansionism <= 11) dm += 1;
+		if(world.culture_expansionism >= 12) dm += 2;
+		world.culture_militancy = Math.max(1,this.roll(2,6,0,'Culture Militancy') + dm);
+	}
+	
+	genCulture(world)
+	{
+		this.genCultureDiversity(world);
+		this.genCultureXenophilia(world);
+		this.genCultureUniqueness(world);
+		this.genCultureSymbology(world);
+		this.genCultureCohesion(world);
+		this.genCultureProgressiveness(world);
+		this.genCultureExpansionism(world);
+		this.genCultureMilitancy(world);
+	}
+	
+	genEconomyImportance(world,trades)
+	{
+		let dm = 0;
+		if(world.starport == 10 || world.starport == 11) dm += 1;
+		if(world.starport >= 13) dm -= 1;
+		if(world.population <= 6) dm -= 1;
+		if(world.population >= 9) dm += 1;
+		if(world.technology <= 8) dm -= 1;
+		if(world.technology >= 10) dm += 1;
+		if(world.technology >= 16) dm += 1;
+		if(trades.indexOf('In') > -1) dm += 1;
+		if(trades.indexOf('Ag') > -1) dm += 1;
+		if(trades.indexOf('Ri') > -1) dm += 1;
+		if(world.base_military + world.base_naval + world.base_scout >= 2) dm += 1;
+
+		world.importance = clamp(dm,-3,5);
+	}
+	
+	genFactorResource(world,trades)
+	{
+		let dm = 0;
+		
+		if(world.technology >= 8)
+		{
+			let system = getSystem(world);
+			if(system != null)
+			{
+				dm += system.n_planet_belt;
+				dm += system.n_planet_gas;
+			}
+		}
+		if(trades.indexOf('In') > -1 || trades.indexOf('Ag') > -1) dm += 1 - this.roll(1,6,0,'Resource Factor');
+		
+		world.factor_resource = Math.max(2,world.resource_rating + dm);
+	}
+	
+	genFactorLabour(world,trades)
+	{		
+		world.factor_labour = Math.max(1,world.population - 1);
+	}
+	
+	genFactorInfrastructure(world,trades)
+	{
+		let dm = 0;
+		if(world.population >= 4 && world.population <= 6) dm += this.roll(1,6,0,'Infrastructure Factor');
+		if(world.population >= 7) dm += this.roll(2,6,0,'Infrastructure Factor');
+		world.factor_infrastructure = Math.max(0,world.importance + dm);
+	}
+	
+	genFactorEfficiency(world,trades)
+	{
+		let dm = 0;
+		
+		if(world.government == 0 ||
+		   world.government == 3 ||
+		   world.government == 6 ||
+		   world.government == 9 ||
+		   world.government == 11 ||
+		   world.government == 12 ||
+		   world.government == 15) dm -= 1;
+		if(world.government == 1 ||
+		   world.government == 2 ||
+		   world.government == 4 ||
+		   world.government == 5 ||
+		   world.government == 8) dm += 1;
+	    if(world.law_level <= 4) dm += 1;
+		if(world.law_level >= 10) dm -= 1;
+		if(world.population_concentration <= 3) dm -= 1;
+		if(world.population_concentration >= 8) dm += 1;
+		if(world.culture_progressiveness <= 3) dm -= 1;
+		if(world.culture_progressiveness >= 9) dm += 1;
+		if(world.culture_expansionism <= 3) dm -= 1;
+		if(world.culture_expansionism >= 9) dm += 1;
+		
+		if(world.population <= 6) world.factor_efficiency = dm + this.roll(2,6,0,'Efficiency Factor') - 7;
+		if(world.population >= 7) world.factor_efficiency = dm + this.roll(2,3,0,'Efficiency Factor') - 4;
+		if(world.population == 0) world.factor_efficiency = -5;
+		
+		world.factor_efficiency = clamp(world.factor_efficiency,-5,5);
+	}
+	
+	genEconomyResourceUnits(world)
+	{
+		let eff = world.factor_efficiency;
+		if(eff == 0) eff = 1;
+		
+		world.economy_resource_units = Math.max(1,world.factor_resource)
+									 * Math.max(1,world.factor_labour)
+									 * Math.max(1,world.factor_infrastructure)
+									 * eff;
+	}
+	
+	genEconomyGWP(world,trades)
+	{
+		let eff = world.factor_efficiency;
+		if(eff == 0) eff = 1;
+
+		let inf = Math.max(1,world.factor_infrastructure);
+		let res = Math.max(1,world.factor_resource);
+		let base = clamp(inf + res,2,inf * 2);
+		let tl = Math.max(0.05,world.technology / 10.0);
+		let port = 1.0;
+		if(world.starport == 10) port = 1.5;
+		if(world.starport == 11) port = 1.2;
+		if(world.starport == 12) port = 1.0;
+		if(world.starport == 13) port = 0.8;
+		if(world.starport == 14) port = 0.5;
+		if(world.starport == 15) port = 0.9;
+		if(world.starport == 16) port = 0.7;
+		if(world.starport == 17) port = 0.4;
+		if(world.starport == 30) port = 0.2;
+		if(world.starport == 31) port = 0.2;
+		
+		let gov = 1.0;
+		if(world.government == 0) gov = 1.0;
+		if(world.government == 1) gov = 1.5;
+		if(world.government == 2) gov = 1.2;
+		if(world.government == 3) gov = 0.8;
+		if(world.government == 4) gov = 1.2;
+		if(world.government == 5) gov = 1.3;
+		if(world.government == 6) gov = 0.6;
+		if(world.government == 7) gov = 1.0;
+		if(world.government == 8) gov = 0.9;
+		if(world.government == 9) gov = 0.8;
+		if(world.government == 10) gov = 1.0;
+		if(world.government == 11) gov = 0.7;
+		if(world.government == 12) gov = 1.0;
+		if(world.government == 13) gov = 0.6;
+		if(world.government == 14) gov = 0.5;
+		if(world.government == 15) gov = 0.8;
+		
+		let tr = 1.0;
+		if(trades.indexOf('Ag') > -1) tr = 0.9;
+		if(trades.indexOf('As') > -1) tr = 1.2;
+		if(trades.indexOf('Ga') > -1) tr = 1.2;
+		if(trades.indexOf('In') > -1) tr = 1.1;
+		if(trades.indexOf('Na') > -1) tr = 0.9;
+		if(trades.indexOf('Ni') > -1) tr = 0.9;
+		if(trades.indexOf('Po') > -1) tr = 0.8;
+		if(trades.indexOf('Ri') > -1) tr = 1.2;
+
+		world.economy_gwp_per_capita = 0;
+		let mods = tl * port * gov * tr;
+		if(eff > 0)
+		{
+			world.economy_gwp_per_capita = 1000 * base * mods * eff;
+		}
+		else
+		{
+			world.economy_gwp_per_capita = -1000 * base * mods / (eff - 1);
+		}
+		world.economy_gwp_per_capita = Math.round(world.economy_gwp_per_capita);
+		world.economy_gwp = world.getTotalPopulation() * world.economy_gwp_per_capita;;
+	}
+	
+	genEconomyWorldTradeNumber(world)
+	{
+		let dm = 0;
+		if(world.technology <= 1) dm -= 1;
+		if(world.technology >= 5 && world.technology <= 8) dm += 1;
+		if(world.technology >= 9 && world.technology <= 14) dm += 2;
+		if(world.technology >= 15) dm += 3;
+		let base = world.population + dm;
+		let port = 0;
+		if(base <= 1)
+		{
+			if(world.starport == 10) port = 3;
+			if(world.starport == 11) port = 2;
+			if(world.starport == 12) port = 2;
+			if(world.starport == 13) port = 1;
+			if(world.starport == 14) port = 1;
+			if(world.starport == 31) port = 0;
+		}
+		else if(base <= 3)
+		{
+			if(world.starport == 10) port = 2;
+			if(world.starport == 11) port = 2;
+			if(world.starport == 12) port = 1;
+			if(world.starport == 13) port = 1;
+			if(world.starport == 14) port = 0;
+			if(world.starport == 31) port = 0;
+		}
+		else if(base <= 5)
+		{
+			if(world.starport == 10) port = 2;
+			if(world.starport == 11) port = 1;
+			if(world.starport == 12) port = 1;
+			if(world.starport == 13) port = 0;
+			if(world.starport == 14) port = 0;
+			if(world.starport == 31) port = -5;
+		}
+		else if(base <= 7)
+		{
+			if(world.starport == 10) port = 1;
+			if(world.starport == 11) port = 1;
+			if(world.starport == 12) port = 0;
+			if(world.starport == 13) port = 0;
+			if(world.starport == 14) port = -1;
+			if(world.starport == 31) port = -6;
+		}
+		else if(base <= 9)
+		{
+			if(world.starport == 10) port = 1;
+			if(world.starport == 11) port = 0;
+			if(world.starport == 12) port = 0;
+			if(world.starport == 13) port = -1;
+			if(world.starport == 14) port = -2;
+			if(world.starport == 31) port = -7;
+		}
+		else if(base <= 11)
+		{
+			if(world.starport == 10) port = 0;
+			if(world.starport == 11) port = 0;
+			if(world.starport == 12) port = -1;
+			if(world.starport == 13) port = -2;
+			if(world.starport == 14) port = -3;
+			if(world.starport == 31) port = -8;
+		}
+		else if(base <= 13)
+		{
+			if(world.starport == 10) port = 0;
+			if(world.starport == 11) port = -1;
+			if(world.starport == 12) port = -2;
+			if(world.starport == 13) port = -3;
+			if(world.starport == 14) port = -4;
+			if(world.starport == 31) port = -9;
+		}
+		else if(base >= 14)
+		{
+			if(world.starport == 10) port = 0;
+			if(world.starport == 11) port = -2;
+			if(world.starport == 12) port = -3;
+			if(world.starport == 13) port = -4;
+			if(world.starport == 14) port = -5;
+			if(world.starport == 31) port = -10;
+		}
+		world.economy_wtn = Math.max(0,base + port);
+	}
+	
+	genEconomyInequality(world)
+	{
+		let dm = 0;
+		
+		if(world.government == 6 || world.government == 11 || world.government == 15) dm += 10;
+		if(world.government == 0 || world.government == 1 || world.government == 3 || world.government == 9 || world.government == 12) dm += 5;
+		if(world.government == 4 || world.government == 8) dm -= 5;
+		if(world.government == 2) dm -= 10;
+		if(world.law_level >= 9) dm += world.law_level - 8;
+		dm += world.population_concentration;
+		dm -= world.factor_infrastructure;
+		
+		world.economy_inequality = clamp(50 - world.factor_efficiency * 5 + 2 * (this.roll(2,6,0,'Inequality Rating') - 7) + dm,0,100);
+	}
+	
+	genEconomyDevelopment(world)
+	{
+		world.economy_development = (world.economy_gwp_per_capita / 1000.0) * (1 - world.economy_inequality / 100.0);
+		world.economy_development = Math.round(world.economy_development * 100) / 100.0;
+	}
+	
+	genEconomy(world)
+	{
+		const trades = world.getTradeProfile();
+		this.genEconomyImportance(world,trades);
+		this.genFactorResource(world,trades);
+		this.genFactorLabour(world,trades);
+		this.genFactorInfrastructure(world,trades);
+		this.genFactorEfficiency(world,trades);
+		this.genEconomyResourceUnits(world);
+		this.genEconomyGWP(world,trades);
+		this.genEconomyWorldTradeNumber(world);
+		this.genEconomyInequality(world);
+		this.genEconomyDevelopment(world);
+	}
+	
+	genStarportTraffic(world)
+	{
+		let imp = world.importance;
+		if(world.economy_wtn >= 10) imp += 1;
+		if(world.economy_wtn <= 4) imp -= 1;
+		world.starport_importance = imp;
+		if(imp >= 6)
+		{
+			world.starport_traffic_daily = '3D x 20 + 2D-7';
+			world.starport_traffic_daily_max = 365;
+			world.starport_traffic_weekly = 2000;
+		}
+		if(imp == 5)
+		{
+			world.starport_traffic_daily = '3D x 10 + 2D-7';
+			world.starport_traffic_daily_max = 185;
+			world.starport_traffic_weekly = 1000;
+		}
+		if(imp == 4)
+		{
+			world.starport_traffic_daily = '2D + 10';
+			world.starport_traffic_daily_max = 22;
+			world.starport_traffic_weekly = 150;
+		}
+		if(imp == 3)
+		{
+			world.starport_traffic_daily = '2D - 5';
+			world.starport_traffic_daily_max = 7;
+			world.starport_traffic_weekly = 30;
+		}
+		if(imp == 2)
+		{
+			world.starport_traffic_daily = '1D - 2';
+			world.starport_traffic_daily_max = 4;
+			world.starport_traffic_weekly = 20;
+		}
+		if(imp == 1)
+		{
+			world.starport_traffic_daily = '1D - 3';
+			world.starport_traffic_daily_max = 3;
+			world.starport_traffic_weekly = 10;
+		}
+		if(imp == 0)
+		{
+			world.starport_traffic_daily = '1D - 4';
+			world.starport_traffic_daily_max = 2;
+			world.starport_traffic_weekly = 5;
+		}
+		if(imp == -1)
+		{
+			world.starport_traffic_daily = '1D - 5';
+			world.starport_traffic_daily_max = 1;
+			world.starport_traffic_weekly = 3;
+		}
+		if(imp == -2)
+		{
+			world.starport_traffic_daily = '2D - 11';
+			world.starport_traffic_daily_max = 1;
+			world.starport_traffic_weekly = 2;
+		}
+		if(imp == -3)
+		{
+			world.starport_traffic_daily = '2D - 11';
+			world.starport_traffic_daily_max = 1;
+			world.starport_traffic_weekly = 1;
+		}
+	}
+	
+	genHighportDockCapacity(world)
+	{
+		let imp = world.importance;
+		if(world.importance < 1) imp = 1;
+		let a = 0;
+		let b = 0;
+		if(world.highport)
+		{
+			if(world.starport == 10)
+			{
+				a = 100000; b = 500;
+			}
+			else if(world.starport == 11)
+			{
+				a = 50000; b = 500;
+			}
+			if(world.starport == 12)
+			{
+				a = 20000; b = 200;
+			}
+			if(world.starport == 13)
+			{
+				a = 500; b = 100;
+			}
+		}
+		
+		world.highport_capacity = a + imp * world.starport_traffic_weekly * b * world.population * (1 + (this.roll(1,6,0,'Highport Docking Capacity') + world.factor_efficiency) / 5.0);
+		world.highport_capacity = Math.ceil(world.highport_capacity / 100) * 100;
+	}
+
+	genDownportDockCapacity(world)
+	{
+		if(world.highport) world.downport_capacity = this.roll(1,6,0,'Downport Docking Capacity') * 0.1 * world.highport_capacity;
+		else
+		{
+			let imp = world.importance;
+			if(world.importance < 1) imp = 1;
+			let a = 0;
+			let b = 0;
+			if(world.starport == 10)
+			{
+				a = 100000; b = 500;
+			}
+			else if(world.starport == 11)
+			{
+				a = 50000; b = 500;
+			}
+			if(world.starport == 12)
+			{
+				a = 20000; b = 200;
+			}
+			if(world.starport == 13)
+			{
+				a = 500; b = 100;
+			}
+			if(world.starport == 14)
+			{
+				a = 400; b = 100;
+			}
+			
+			world.downport_capacity = a + imp * world.starport_traffic_weekly * b * world.population * (1 + (this.roll(1,6,0,'Downport Docking Capacity') + world.factor_efficiency) / 5.0);
+			world.downport_capacity = Math.ceil(world.downport_capacity / 100) * 100;
+		}
+	}
+	
+	genShipyardCapacity(world,trades)
+	{
+		let dm = 0;
+		let a = 0;
+		let b = 0;
+		let imp = world.importance;
+		if(world.importance == 0) imp = 1;
+		if(world.technology <= 8) dm -= 4;
+		if(world.technology >= 12 && world.technology <= 14) dm += 2;
+		if(world.technology >= 15) dm += 4;
+		if(trades.indexOf('Ni') > -1) dm -= 2;
+		if(trades.indexOf('In') > -1) dm += 2;
+		
+		if(world.starport == 10)
+		{
+			a = 0; b = 20000;
+		}
+		else if(world.starport == 11)
+		{
+			a = 0; b = 100000;
+		}
+		if(world.starport == 12)
+		{
+			a = -3; b = 15000;
+		}
+		
+		if(b == 0)
+		{
+			world.shipyard_capacity = 0;
+			world.shipyard_max_bay_size = 0;
+			world.shipyard_annual_output = 0;
+		}
+		else
+		{
+			world.shipyard_capacity = (world.factor_efficiency + world.factor_infrastructure + this.roll(1,6,0,'Shipyard Build Capacity') + dm) * world.getTotalPopulation() / b;
+		}
+		
+		if(world.starport == 10 && world.shipyard_capacity < 10000)
+		{
+			world.shipyard_capacity = 9000 + this.roll(1,6,0,'Shipyard Build Capacity Class A Min') * 500;
+		}
+		else if(world.starport == 11 && world.shipyard_capacity < 5000)
+		{
+			world.shipyard_capacity = 4000 + this.roll(1,6,0,'Shipyard Build Capacity Class B Min') * 500;
+		}
+		
+		world.shipyard_capacity = Math.ceil(world.shipyard_capacity / 100) * 100;
+		
+		if(world.shipyard_capacity < 0) world.shipyard_capacity = 0;
+		
+		world.shipyard_max_bay_size = world.shipyard_capacity / 10;
+
+		if(world.starport == 12)
+		{
+			world.shipyard_annual_output = world.shipyard_capacity / 10;
+		}
+		else
+		{
+			if(imp >= 1) world.shipyard_annual_output = world.shipyard_capacity / imp;
+			else world.shipyard_annual_output = world.shipyard_capacity * (1 - imp);
+		}
+	}
+	
+	genStarportDetails(world)
+	{
+		const trades = world.getTradeProfile();
+		this.genStarportTraffic(world);
+		this.genHighportDockCapacity(world);
+		this.genDownportDockCapacity(world);
+		this.genShipyardCapacity(world,trades);
+	}
+	
+	GenMilitaryEnforcement(world)
+	{
+		let dm = 0;
+		if(world.culture_militancy <= 2) dm -= 4;
+		else if(world.culture_militancy <= 5) dm -= 1;
+		else if(world.culture_militancy <= 8) dm += 1;
+		else if(world.culture_militancy <= 11) dm += 2;
+		else if(world.culture_militancy >= 12) dm += 4;
+		
+		if(world.government == 0) dm -= 5;
+		if(world.government == 11) dm += 2;
+		if(world.law_level == 0) dm -= 4;
+		if(world.law_level == 1) dm -= 2;
+		if(world.law_level == 2) dm -= 1;
+		if(world.law_level >= 9 && world.law_level <= 11) dm += 2;
+		if(world.law_level >= 12) dm += 4;
+		if(world.population_concentration <= 4) dm += 2;
+		
+		world.military_enforcement = clamp(3 + dm,1,16);
+	}
+	
+	GenMilitaryMilitia(world)
+	{
+		let dm = 0;
+		if(world.culture_militancy <= 2) dm -= 4;
+		else if(world.culture_militancy <= 5) dm -= 1;
+		else if(world.culture_militancy <= 8) dm += 1;
+		else if(world.culture_militancy <= 11) dm += 2;
+		else if(world.culture_militancy >= 12) dm += 4;
+		
+		if(world.government == 1) dm -= 4;
+		if(world.government == 2) dm += 2;
+		if(world.government == 6) dm -= 6;
+		dm -= world.law_level;
+		if(world.population_concentration <= 2) dm += 2;
+		else if(world.population_concentration <= 4) dm += 1;
+		else if(world.population_concentration >= 6) dm -= 1;
+		
+		let r = this.roll(2,6,0,'Military Militia') - 4 + dm;
+		if(r >= 0) world.military_militia = clamp(r,1,16);
+		else world.military_militia = 0;
+	}
+	
+	GenMilitaryArmy(world)
+	{
+		let dm = 0;
+		if(world.culture_militancy <= 2) dm -= 4;
+		else if(world.culture_militancy <= 5) dm -= 1;
+		else if(world.culture_militancy <= 8) dm += 1;
+		else if(world.culture_militancy <= 11) dm += 2;
+		else if(world.culture_militancy >= 12) dm += 4;
+		
+		if(world.military_militia > 0) dm -= 2;
+		if(world.government == 0) dm -= 6;
+		if(world.government == 7) dm += 4;
+		if(world.government >= 10) dm += 4;
+		if(world.technology <= 7) dm += 4;
+		if(world.technology >= 8) dm -= 2;
+		if(world.base_military) dm += 6;
+		if(world.base_military && world.government == 6) dm += 2;
+		
+		let r = this.roll(2,6,0,'Military Army') - 4 + dm;
+		if(r >= 0) world.military_army = clamp(r,1,16);
+		else world.military_army = 0;
+	}
+	
+	GenMilitaryWetNavy(world)
+	{
+		let dm = 0;
+		if(world.culture_militancy <= 2) dm -= 4;
+		else if(world.culture_militancy <= 5) dm -= 1;
+		else if(world.culture_militancy <= 8) dm += 1;
+		else if(world.culture_militancy <= 11) dm += 2;
+		else if(world.culture_militancy >= 12) dm += 4;
+		
+		if(world.hydrographics == 0) dm -= 20;
+		else if(world.hydrographics <= 3) dm -= 5;
+		else if(world.hydrographics == 8) dm += 2;
+		else if(world.hydrographics == 9) dm += 4;
+		else if(world.hydrographics == 10) dm += 8;
+		if(world.government == 7) dm += 4;
+		if(world.technology == 7) dm -= 8;
+		else if(world.technology >= 8 && world.technology <= 9) dm -= 2;
+		else if(world.technology >= 10) dm -= world.technology;
+		
+		let r = this.roll(2,6,0,'Military Wet Navy') - 4 + dm;
+		if(r >= 0) world.military_wet_navy = clamp(r,1,16);
+		else world.military_wet_navy = 0;
+	}
+	
+	GenMilitaryAirForce(world)
+	{
+		let dm = 0;
+		if(world.culture_militancy <= 2) dm -= 4;
+		else if(world.culture_militancy <= 5) dm -= 1;
+		else if(world.culture_militancy <= 8) dm += 1;
+		else if(world.culture_militancy <= 11) dm += 2;
+		else if(world.culture_militancy >= 12) dm += 4;
+		
+		if(world.technology <= 8)
+		{
+			if(world.atmosphere <= 1) dm -= 20;
+			else if(world.atmosphere <= 3 || world.atmosphere == 14) dm -= 8;
+			else if(world.atmosphere <= 5) dm -= 2;
+		}
+		if(world.government == 7) dm += 4;
+		if(world.technology <= 2) dm -= 20;
+		else if(world.technology == 3) dm -= 10;
+		else if(world.technology >= 10 && world.technology <= 12) dm -= 4;
+		else if(world.technology >= 13) dm -= 6;
+		
+		let r = this.roll(2,6,0,'Military Air Force') - 4 + dm;
+		if(r >= 0) world.military_air_force = clamp(r,1,16);
+		else world.military_air_force = 0;
+	}
+	
+	GenMilitarySystemDefence(world)
+	{
+		let dm = 0;
+		if(world.culture_militancy <= 2) dm -= 4;
+		else if(world.culture_militancy <= 5) dm -= 1;
+		else if(world.culture_militancy <= 8) dm += 1;
+		else if(world.culture_militancy <= 11) dm += 2;
+		else if(world.culture_militancy >= 12) dm += 4;
+		
+		if(world.population <= 3) dm -= 6;
+		else if(world.population <= 5) dm -= 2;
+		if(world.technology <= 5) dm -= 20;
+		if(world.technology == 6) dm -= 8;
+		if(world.technology == 7) dm -= 6;
+		if(world.technology == 8) dm -= 2;
+		if(world.starport == 10) dm += 4;
+		if(world.starport == 11) dm += 2;
+		if(world.starport == 12) dm += 1;
+		if(world.starport == 14) dm -= 2;
+		if(world.starport == 31) dm -= 8;
+		
+		if(world.highport) dm += 2;
+		if(world.base_naval) dm += 4;
+		if(world.base_military) dm += 2;
+		
+		let r = this.roll(2,6,0,'Military System Defence') - 4 + dm;
+		if(r >= 0) world.military_system_defence = clamp(r,1,16);
+		else world.military_system_defence = 0;
+	}
+	
+	GenMilitaryNavy(world)
+	{
+		let dm = 0;
+		if(world.culture_militancy <= 2) dm -= 4;
+		else if(world.culture_militancy <= 5) dm -= 1;
+		else if(world.culture_militancy <= 8) dm += 1;
+		else if(world.culture_militancy <= 11) dm += 2;
+		else if(world.culture_militancy >= 12) dm += 4;
+		
+		if(world.population <= 3) dm -= 6;
+		else if(world.population <= 6) dm -= 3;
+		if(world.technology <= 5) dm -= 20;
+		if(world.technology == 6) dm -= 12;
+		if(world.technology == 7) dm -= 8;
+		if(world.technology == 8) dm -=6;
+		if(world.starport == 10) dm += 4;
+		if(world.starport == 11) dm += 1;
+		if(world.starport == 14) dm -= 2;
+		if(world.starport == 31) dm -= 8;
+		
+		if(world.highport) dm += 2;
+		if(world.base_naval) dm += 4;
+		if(world.base_military) dm += 2;
+		
+		if(world.culture_expansionism <= 5) dm -= 2;
+		if(world.culture_expansionism >= 9 && world.culture_expansionism <= 11) dm += 2;
+		if(world.culture_expansionism >= 12) dm += 4;
+		
+		let r = this.roll(2,6,0,'Military Navy') - 4 + dm;
+		if(r >= 0) world.military_navy = clamp(r,1,16);
+		else world.military_navy = 0;
+	}
+	
+	GenMilitaryMarines(world)
+	{
+		let dm = 0;
+		if(world.culture_militancy <= 2) dm -= 4;
+		else if(world.culture_militancy <= 5) dm -= 1;
+		else if(world.culture_militancy <= 8) dm += 1;
+		else if(world.culture_militancy <= 11) dm += 2;
+		else if(world.culture_militancy >= 12) dm += 4;
+		
+		if(world.population <= 5) dm -= 4;
+		if(world.technology <= 8) dm -=6;
+		
+		if(world.base_naval) dm += 2;
+		if(world.base_military) dm += 2;
+		if(world.military_navy == 0) dm -= 6;
+		if(world.military_system_defence == 0) dm -= 6;
+		
+		if(world.culture_expansionism <= 5) dm -= 4;
+		if(world.culture_expansionism >= 9 && world.culture_expansionism <= 11) dm += 1;
+		if(world.culture_expansionism >= 12) dm += 2;
+		
+		let r = this.roll(2,6,0,'Military Navy') - 4 + dm;
+		if(r >= 0) world.military_marines = clamp(r,1,16);
+		else world.military_marines = 0;
+	}
+	
+	GenMilitaryBudget(world)
+	{
+		let dm = 0;
+		if(world.government == 0 || world.government == 2 || world.government == 4) dm -= 2;
+		if(world.government == 5) dm += 1;
+		if(world.government == 9) dm -= 1;
+		if(world.government == 10 || world.government == 15) dm += 3;
+		if(world.government == 11 || world.government == 12 || world.government == 14) dm += 2;
+		if(world.law_level >= 12) dm += 2;
+		if(world.base_military) dm += 4;
+		if(world.base_navy) dm += 2;
+		
+		dm += world.culture_militancy - 5;
+		let branch = world.military_air_force;
+		branch += world.military_army;
+		branch += world.military_enforcement;
+		branch += world.military_militia;
+		branch += world.military_navy;
+		branch += world.military_system_defence;
+		branch += world.military_wet_navy;
+		dm += Math.floor(branch / 10) - 4;
+		
+		world.military_budget_percent = 0.02 * (1 + world.factor_efficiency / 10.0) * (1 + Math.max(this.roll(2,6,0,'Military Budget') - 7 + dm,-9) / 10.0);
+		world.military_budget = world.economy_gwp * world.military_budget_percent;
+	}
+	
+	genMilitary(world)
+	{
+		this.GenMilitaryEnforcement(world);
+		this.GenMilitaryMilitia(world);
+		this.GenMilitaryArmy(world);
+		this.GenMilitaryWetNavy(world);
+		this.GenMilitaryAirForce(world);
+		this.GenMilitarySystemDefence(world);
+		this.GenMilitaryNavy(world);
+		this.GenMilitaryMarines(world);
+		this.GenMilitaryBudget(world);
+	}
+}
+	
+function getSystem(world)
+{
+	if(world.system != null) return world.system;
+	if(world.host != null) return getSystem(world.host);
+}
+	
+function getTLM(die_result)
+{
+	switch(die_result)
+	{
+	case 2: return -3;
+	case 3: return -2;
+	case 4: return -1;
+	case 5: 
+	case 6: 
+	case 7: 
+	case 8: 
+	case 9: return 0;
+	case 10: return 1;
+	case 11: return 2;
+	case 12: return 3;
+	default: 
+	  if(die_result < 2) { return -3; }
+	  else if(die_result > 12) { return 3; }
+	  else {return 0; }
+	}
 }
 
 function clamp(num, min, max)
@@ -9046,6 +10234,11 @@ function generateMainWorldData(data, world, history)
 	history.appendChild(createElementGroup('p', [createElement('span', 'Government Profile: ', 'text-bold'), createElement('span', world.getGovernmentProfile())]));
 	history.appendChild(createElementGroup('p', [createElement('span', 'Law Profile: ', 'text-bold'), createElement('span', world.getLawProfile())]));
 	world.factions.forEach(faction => history.appendChild(createElementGroup('p', [createElement('span', 'Faction: ', 'text-bold'), createElement('span', faction.getProfileLong())])));
+	history.appendChild(createElementGroup('p', [createElement('span', 'Technology Profile: ', 'text-bold'), createElement('span', world.getTechnologyProfile())]));
+	history.appendChild(createElementGroup('p', [createElement('span', 'Culture Profile: ', 'text-bold'), createElement('span', world.getCultureProfile())]));
+	history.appendChild(createElementGroup('p', [createElement('span', 'Economy Profile: ', 'text-bold'), createElement('span', world.getEconomyProfile())]));
+	history.appendChild(createElementGroup('p', [createElement('span', 'Starport Profile: ', 'text-bold'), createElement('span', world.getStarportProfile())]));
+	history.appendChild(createElementGroup('p', [createElement('span', 'Military Profile: ', 'text-bold'), createElement('span', world.getMilitaryProfile())]));
 	history.appendChild(createElement('h4', 'Roll Log', 'small-caps'));
 	history.appendChild(buildRollHistoryTable(factory));
 	row.children[3].innerHTML = world.getProfileShort();
