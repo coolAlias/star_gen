@@ -261,6 +261,9 @@
 							<div class="input_container">
 								<label for="var_orbit"><input id="var_orbit" name="var_orbit" type="checkbox" checked /> Enable Variance: Orbit#s</label>
 							</div>
+							<div class="input_container" title="Increases system spread in cases where planets would be clustered very tightly around a star that supports much wider orbits">
+								<label for="tweak_min_spread"><input id="tweak_min_spread" name="tweak_min_spread" type="checkbox" /> Tweak Minimum System Spread</label>
+							</div>
 							<div class="input_container">
 								<label for="enable_ecc"><input id="enable_ecc" name="enable_ecc" type="checkbox" checked /> Enable Orbital Eccentricity</label>
 							</div>
@@ -4475,6 +4478,7 @@ class StarSystemFactory extends AbstractFactory
 	 *   @option bool per_star_baseline True to calculate baseline number, baseline Orbit#, and system spread for each secondary and companion star separately
 	 *   @option bool per_star_empty_orbits True to determine empty orbits for each star (or group) individually, rather than for the system as a whole
 	 *   @option bool cont_sec True to enable checking for secondary stars when only the primary was provided (Continuation Method)
+	 *   @option bool tweak_min_spread True to increase system spread when the minimum orbit_spread is significantly less than the potential maximum
 	 * @param string seed Seed used for random number generation
 	 */
 	constructor(star_factory, world_factory, options, seed = 'default')
@@ -4488,6 +4492,7 @@ class StarSystemFactory extends AbstractFactory
 		this.per_star_baseline = options.has('per_star_baseline');
 		this.per_star_empty_orbits = options.has('per_star_empty_orbits');
 		this.continuation_add_secondaries = options.has('cont_sec');
+		this.tweak_min_spread = options.has('tweak_min_spread');
 		this.seed = seed;
 		this.bands = ['Primary', 'Close', 'Near', 'Far'];
 	}
@@ -4686,7 +4691,9 @@ class StarSystemFactory extends AbstractFactory
 			}
 			
 			// Add a bit more variability when the minimum orbit_spread is significantly less than the potential maximum
-			if (profile_planets.length > 3 && profile_planets[3] !== null) {
+			if (!this.tweak_min_spread) {
+				// Option not enabled
+			} else if (profile_planets.length > 3 && profile_planets[3] !== null) {
 				// Do not adjust user-entered system spread
 			} else if ((system.orbit_spread_max / system.orbit_spread) > (system.n_planets + system.n_empty)) {
 				const spread_half = system.orbit_spread_max / 2;

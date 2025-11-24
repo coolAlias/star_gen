@@ -58,6 +58,8 @@ Worlds with an Atmosphere code of 4-9 will be placed around an HZCO if possible.
 
 - Temperature
 
+**Tweak Minimum System Spread** Increases system spread in cases where planets would be clustered very tightly around a star that supports much wider orbits.
+
 **Enable Orbital Eccentricity** Unchecking this option results in every star (and planet) having a perfectly circular orbit.
 
 **Age, Small Stars: Increase Precision** Determine the age of small stars to within 1/10 of a Gyr of precision instead of only whole Gyrs.
