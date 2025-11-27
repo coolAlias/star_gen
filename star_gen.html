@@ -1804,7 +1804,7 @@ class AbstractStar extends OrbitingBody
 		this.anomalous = [];
 	}
 
-	addAnomalousPlanetData(orbit, data)
+	addAnomalousPlanetData(orbit, data, world_profile)
 	{
 		const index = 1 + this.bodies.findLastIndex((value) => round(value, 3) <= round(orbit, 3));
 		this.bodies.splice(index, 0, orbit);
@@ -1822,6 +1822,11 @@ class AbstractStar extends OrbitingBody
 		});
 		this.anomalous.push({'index': index, 'data': data});
 		log('Anomalous planet assigned to Orbit# ' + orbit.toFixed(3) + ' around star ' + this.getDesignation() + ' at index ' + index);
+		if(world_profile && world_profile.orbit_index <= index)
+		{
+			world_profile.orbit_index += 1;
+			log('Incremented main world orbit index due to anomalous planet injection');
+		}
 		log(data);
 	}
 
@@ -4722,7 +4727,7 @@ class StarSystemFactory extends AbstractFactory
 			// Step 7: Anomalous Planets
 			const n_anomalous = clamp(this.roll(2, 6, -9, 'Anomalous Planet Count'), 0, 3);
 			if (n_anomalous > 0) {
-				this.genAnomalousPlanets(system, n_anomalous);
+				this.genAnomalousPlanets(system, n_anomalous, world_profile);
 			}
 			
 			// Step 8: Placing Worlds
@@ -5570,7 +5575,7 @@ class StarSystemFactory extends AbstractFactory
 		}
 	}
 
-	genAnomalousPlanets(system, n_anomalous)
+	genAnomalousPlanets(system, n_anomalous, world_profile)
 	{
 		const group_indexes = system.star_groups
 			.map((group, index) => (group.getTotalAllowedOrbits() > 0 ? index : null))
@@ -5590,7 +5595,7 @@ class StarSystemFactory extends AbstractFactory
 			const group_spread = (this.per_star_baseline ? group.getMinimumOrbitSpread() : 0);
 			const spread = (group_spread > 0 ? group_spread : system.getMinimumOrbitSpread());
 			const orbit = this.genAnomalousPlanetOrbitNumber(group, spread, data.orbit_is_trojan);
-			group.addAnomalousPlanetData(orbit, data);
+			group.addAnomalousPlanetData(orbit, data, world_profile);
 			this.incrementAnomalousPlanetCount(system, group);
 			this.flushHistory(group);
 		}
