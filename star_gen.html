@@ -2789,10 +2789,14 @@ class World extends OrbitingBody
 
 	isInHzco()
 	{
-		const lower = this.getHzcoPlus(-1);
-		const upper = this.getHzcoPlus(1);
+		const hzco = this.getHzco;
 		const orbit = this.getHzcoOrbit();
-		return orbit > lower && orbit < upper;
+
+		const deviation = (hzco < 1 || orbit < 1)
+			? (orbit - hzco) / Math.min(orbit, hzco)
+			: orbit - hzco;
+		
+		return deviation > -1 && deviation < 1;
 	}
 
 	isInTwilightZone()
