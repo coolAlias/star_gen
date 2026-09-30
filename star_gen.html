@@ -6858,7 +6858,7 @@ class WorldFactory extends AbstractFactory
 		// DM-2 if Atmosphere not 4-9
 		if (world.atmosphere.type < 4 || world.atmosphere.type > 9) dm -= 2;
 		// DM-2 if Atmosphere has a Low Oxygen taint
-		if (world.atmosphere.taints.find(t => t.subtype === TAINT_B) !== undefined) dm -= 2;
+		if (world.atmosphere.taints.find(t => t.subtype === TAINT_L) !== undefined) dm -= 2;
 		// DM for System Age
 		dm += this.getBiocomplexityModSystemAge(system.age);
 		return dm;
